@@ -1,0 +1,976 @@
+<title>Square Kufic Plate</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Naskh+Arabic:wght@400;600&display=swap">
+<style>
+/* Layout: workshop bench — controls column on the right (RTL subject, LTR UI), plate drawing dominant on the left, dimensioned like a shop drawing. */
+:root {
+  --bg: #e9ecf1;
+  --panel: #ffffff;
+  --ink: #142036;
+  --muted: #5b6678;
+  --line: #d3d9e3;
+  --lapis: #1e3f8c;
+  --lapis-soft: #dfe6f6;
+  --gold: #a87a22;
+  --plate: #f3f0e8;
+  --plate-edge: #c9c2b2;
+  --warn: #9a4b10;
+  --warn-bg: #fbeedd;
+  --font-display: "Reem Kufi", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-arabic: "Noto Naskh Arabic", "Amiri", "Geeza Pro", "Arabic Typesetting", serif;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d131e; --panel: #141c2b; --ink: #e5e9f1; --muted: #98a3b6; --line: #273349;
+    --lapis: #86a8f2; --lapis-soft: #1d2a45; --gold: #d8aa52; --plate: #1b2435; --plate-edge: #34405a;
+    --warn: #f0b27a; --warn-bg: #3a2614; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d131e; --panel: #141c2b; --ink: #e5e9f1; --muted: #98a3b6; --line: #273349;
+  --lapis: #86a8f2; --lapis-soft: #1d2a45; --gold: #d8aa52; --plate: #1b2435; --plate-edge: #34405a;
+  --warn: #f0b27a; --warn-bg: #3a2614; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 30px; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+h1 span { color: var(--gold); font-weight: 500; }
+.sub { color: var(--muted); margin: 0; max-width: 60ch; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+/* Preview */
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 12px; min-width: 0; }
+.stage-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.tabs button { border: 0; background: transparent; color: var(--muted); font: 500 13px var(--font-body); padding: 6px 14px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--lapis); color: var(--panel); }
+.stats { font-family: var(--font-mono); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); font-weight: 500; }
+.drawing { display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: 28px auto; gap: 0; max-width: 720px; width: 100%; margin: 0 auto; }
+.dim-top, .dim-side { font-family: var(--font-mono); font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.dim-top { grid-column: 1; grid-row: 1; }
+.dim-top::before, .dim-top::after { content: ""; flex: 1; border-top: 1px solid var(--muted); opacity: .6; }
+.dim-side { grid-column: 2; grid-row: 2; flex-direction: column; writing-mode: vertical-rl; }
+.dim-side::before, .dim-side::after { content: ""; flex: 1; border-left: 1px solid var(--muted); opacity: .6; }
+.view { grid-column: 1; grid-row: 2; position: relative; aspect-ratio: 1 / 1; max-width: 100%; }
+.view canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#view3d { border-radius: 4px; background: var(--lapis-soft); cursor: grab; touch-action: none; }
+.hint3d { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--muted); pointer-events: none; }
+.reading { direction: rtl; font-family: var(--font-arabic); font-size: 17px; color: var(--muted); text-align: center; margin: 0; overflow-wrap: anywhere; }
+
+/* Controls */
+.panel { display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 12px; }
+.card h2 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+textarea { width: 100%; min-height: 110px; resize: vertical; direction: rtl; font-family: var(--font-arabic); font-size: 20px; line-height: 1.8;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink); }
+textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px solid var(--lapis); outline-offset: 1px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; direction: rtl; }
+.chips button { font-family: var(--font-arabic); font-size: 14px; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 2px 11px; cursor: pointer; }
+.chips button:hover { border-color: var(--lapis); color: var(--lapis); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label { font-size: 12px; color: var(--muted); }
+.field input, .field select { width: 100%; font: 14px var(--font-body); padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--bg); color: var(--ink); }
+.field input[type="number"] { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { accent-color: var(--lapis); width: 16px; height: 16px; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+.warn { font-size: 12px; color: var(--warn); background: var(--warn-bg); border-radius: var(--r); padding: 8px 10px; margin: 0; }
+.exports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.btn { font: 600 13px var(--font-body); border-radius: var(--r); padding: 9px 6px; cursor: pointer; border: 1px solid var(--lapis); background: var(--lapis); color: var(--panel); }
+.btn.ghost { background: transparent; color: var(--lapis); }
+.btn:hover { filter: brightness(1.08); }
+.btn small { display: block; font: 400 11px var(--font-mono); opacity: .85; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: var(--r); font-size: 13px; }
+@media (prefers-reduced-motion: no-preference) { .toast { transition: opacity .2s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Square Kufic Plate <span>كوفي مربع</span></h1>
+    <p class="sub">Type a verse. It is woven into a square in classic square Kufic: one-cell strokes and gaps, text winding around the square, kashida filling every band, exported to scale for printing.</p>
+  </header>
+
+  <div class="main">
+    <section class="stage" aria-label="Plate preview">
+      <div class="stage-bar">
+        <div class="tabs" role="tablist">
+          <button id="tab2d" role="tab" aria-selected="true">Drawing</button>
+          <button id="tab3d" role="tab" aria-selected="false">3D model</button>
+        </div>
+        <div class="stats" id="stats"></div>
+      </div>
+      <div class="drawing">
+        <div class="dim-top" id="dimTop">195 mm</div>
+        <div class="view">
+          <canvas id="view2d"></canvas>
+          <canvas id="view3d" hidden></canvas>
+          <div class="hint3d" id="hint3d" hidden>Drag to orbit · scroll to zoom</div>
+        </div>
+        <div class="dim-side" id="dimSide">195 mm</div>
+      </div>
+      <p class="reading" id="reading"></p>
+    </section>
+
+    <aside class="panel">
+      <div class="card">
+        <h2>Verse</h2>
+        <textarea id="text" dir="rtl" spellcheck="false">إن مع العسر يسرا</textarea>
+        <div class="chips" id="chips"></div>
+        <p class="note">Harakat and Quranic annotation marks are removed; square Kufic is written without them. Verse numbers and ornaments are skipped.</p>
+        <p class="warn" id="unknown" hidden></p>
+      </div>
+
+      <div class="card">
+        <h2>Plate</h2>
+        <div class="row">
+          <div class="field"><label for="plate">Plate size (mm)</label><input id="plate" type="number" min="20" max="1000" step="0.5" value="195"></div>
+          <div class="field"><label for="margin">Margin (mm)</label><input id="margin" type="number" min="0" max="50" step="0.5" value="6"></div>
+        </div>
+        <label class="check"><input id="frame" type="checkbox"> Square border around the text</label>
+      </div>
+
+      <div class="card">
+        <h2>Composition</h2>
+        <div class="row">
+          <div class="field"><label for="layout">Arrangement</label>
+            <select id="layout">
+              <option value="stacked">Stacked</option>
+              <option value="spiral">Spiral</option>
+              <option value="fourfold">Four-fold</option>
+            </select></div>
+          <div class="field"><label for="orient">Orientation</label>
+            <select id="orient">
+              <option value="square">Square</option>
+              <option value="diamond">Diamond (45°)</option>
+            </select></div>
+        </div>
+        <p class="note" id="layoutNote"></p>
+        <div class="row">
+          <div class="field" id="linesField"><label for="lines">Lines</label>
+            <select id="lines"><option value="0">Auto</option></select></div>
+          <div class="field"><label for="justify">Fill each band with</label>
+            <select id="justify">
+              <option value="kashida">Kashida</option>
+              <option value="mixed">Kashida + spaces</option>
+              <option value="spaces">Spaces</option>
+            </select></div>
+        </div>
+        <div class="row">
+          <div class="field" id="startField"><label for="start">First line</label>
+            <select id="start"><option value="bottom">At the bottom</option><option value="top">At the top</option></select></div>
+          <div class="field"><label for="wordGap">Word gap (cells)</label><input id="wordGap" type="number" min="1" max="6" step="1" value="1"></div>
+        </div>
+        <label class="check" id="riseField"><input id="rise" type="checkbox" checked> Carry alef and lam up to the top edge</label>
+        <label class="check"><input id="arms" type="checkbox" checked> Bend alef and lam over short letters</label>
+        <label class="check"><input id="dots" type="checkbox" checked> Letter dots, where there is room</label>
+        <p class="warn" id="shortWarn" hidden>This text is too short to fill a square with whole lines. Try Four-fold, or add words.</p>
+      </div>
+
+      <div class="card">
+        <h2>Thickness</h2>
+        <div class="field"><label for="style">Model style</label>
+          <select id="style">
+            <option value="raised">Raised letters on a plate</option>
+            <option value="engraved">Letters engraved into the plate</option>
+            <option value="letters">Letters only (no plate)</option>
+          </select></div>
+        <div class="row">
+          <div class="field"><label for="thick">Plate thickness (mm)</label><input id="thick" type="number" min="0.4" max="50" step="0.1" value="5"></div>
+          <div class="field" id="reliefField"><label for="relief">Letter relief (mm)</label><input id="relief" type="number" min="0.2" max="20" step="0.1" value="2"></div>
+        </div>
+        <p class="note" id="thickNote"></p>
+      </div>
+
+      <div class="card">
+        <h2>Export</h2>
+        <div class="exports">
+          <button class="btn" id="exSvg">SVG<small>vector, mm</small></button>
+          <button class="btn" id="exPng">PNG<small id="pngInfo">300 dpi</small></button>
+          <button class="btn ghost" id="exStl">STL<small>3D mesh</small></button>
+        </div>
+        <div class="row">
+          <div class="field"><label for="dpi">PNG resolution</label>
+            <select id="dpi"><option>150</option><option selected>300</option><option>600</option></select></div>
+          <div class="field"><label for="svgPlate">SVG contents</label>
+            <select id="svgPlate"><option value="0">Letters only</option><option value="1">Letters + plate layer</option></select></div>
+        </div>
+        <p class="note">SVG and PNG are drawn at true size ({P} × {P} mm), so a slicer imports them to scale; extrude to the thickness above. STL is the finished solid.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+"use strict";
+/* ---------------- Glyphs ----------------
+   Classic square Kufic: every stroke and every gap is one cell.
+   Rows top→bottom, '#' stroke, '.' empty. A band is 8 cells thick:
+   one gap row on its inner side, then 7 rows of letter body with the
+   baseline on the last row. Tall letters fill all 7 rows, most letters 5. */
+const BH = 8;
+const RAW = {
+  alef:  '#/#/#/#/#/#/#',
+  lamM:  '#/#/#/#/#/#/#',
+  lamF:  '..#/..#/#.#/#.#/#.#/#.#/###',
+  kafM:  '###/#../#../#../#../#../###',
+  kafF:  '####/#.../#.../#.#./#.#./#.../####',
+  ta:    '#..../#..../#.###/#.#.#/#.#.#/#.#.#/#####',
+  tooth: '#/#/#/#/#',
+  baF:   '#../#../#../#../###',
+  nunF:  '#...#/#...#/#...#/#...#/#####',
+  yaF:   '#../#../###/..#/###',
+  haM:   '###/..#/..#/..#/###',
+  haF:   '..###/....#/....#/#...#/#####',
+  dal:   '###/#../#../#../###',
+  ra:    '#./#./##',
+  sinM:  '#.#.#/#.#.#/#.#.#/#.#.#/#####',
+  sinF:  '#.#.#.#/#.#.#.#/#.#.#.#/#.#.#.#/#######',
+  sadM:  '#.###/#.#.#/#.#.#/#.#.#/#####',
+  sadF:  '#.#.###/#.#.#.#/#.#.#.#/#.#.#.#/#######',
+  aynM:  '#.#/###/..#/..#/###',
+  aynF:  '..#.#/..###/....#/#...#/#####',
+  faM:   '###/#.#/###/..#/###',
+  faF:   '..###/..#.#/..###/#...#/#####',
+  mim:   '###/#.#/###',
+  hehM:  '###/#.#/###/#.#/###',
+  hehF:  '###/#.#/#.#/#.#/###',
+  waw:   '###/#.#/###/#../###',
+  hamza: '##/#./##'
+};
+// stems whose head may bend sideways over short neighbours: c = column, L/R = directions allowed
+const ARMS = { alef: { c: 0, L: 1, R: 1 }, lamM: { c: 0, L: 1, R: 1 }, lamF: { c: 2, R: 1 }, ta: { c: 0, L: 1, R: 1 } };
+// open bowls and tails may widen; closed loops (ه م و ف) keep their shape
+const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'kafF', 'yaF', 'dal']);
+const KEEP_HEAD = { aynM: 2, aynF: 2, faM: 3, faF: 3, waw: 3 };
+const GL = {};
+for (const k in RAW) {
+  const rows = RAW[k].split('/'), h = rows.length, w = rows[0].length;
+  // tall form: repeat one row (vertical kashida) until the glyph fills the band
+  // (only a row of single vertical strokes may be repeated, never one with a bar in it)
+  // heads, mouths and loops keep their size: these letters stretch only in the stem under the head
+  let sr = k in KEEP_HEAD ? KEEP_HEAD[k] : rows.findIndex((r, i) => i >= 1 && i < h - 1 && !r.includes('##'));
+  if (sr < 0) sr = rows.findIndex(r => !r.includes('##'));
+  if (sr < 0) sr = 0;
+  const cache = {};
+  // cells of the glyph drawn H rows high (row 0 = its top), stretched if H > h
+  const at = H => cache[H] || (cache[H] = (() => {
+    const rs = H > h ? rows.slice(0, sr).concat(Array(H - h + 1).fill(rows[sr]), rows.slice(sr + 1)) : rows, out = [];
+    rs.forEach((r, ri) => [...r].forEach((c, ci) => { if (c === '#') out.push([ri, ci]); }));
+    return out;
+  })());
+  // a column that only carries horizontal bars can repeat: bowls, tails and loops widen
+  let sc = -1;
+  for (let c = 1; c < w - 1 && sc < 0 && WIDEN.has(k); c++) {
+    if (rows.every(r => r[c] !== '#' || (r[c - 1] === '#' && r[c + 1] === '#'))) sc = c;
+  }
+  GL[k] = { k, w, h, tall: h === 7, at, sc, arm: ARMS[k] };
+}
+
+/* ---------------- Letters ----------------
+   m = joining (initial/medial) form, f = final/isolated form, j = joins the next letter.
+   Square Kufic carries no dots, so letters sharing a skeleton share a glyph. */
+const CH = {};
+function def(chars, spec) { for (const c of chars) CH[c] = Object.assign({ j: !!spec.m }, spec); }
+def('اأإآٱٲٳ', { f: 'alef' });
+def('ب', { m: 'tooth', f: 'baF', d: { b: 1 } });
+def('ت', { m: 'tooth', f: 'baF', d: { a: 2 } });
+def('ث', { m: 'tooth', f: 'baF', d: { a: 3 } });
+def('ن', { m: 'tooth', f: 'nunF', d: { a: 1 } });
+def('يی', { m: 'tooth', f: 'yaF', d: { b: 2 } });
+def('ىئ', { m: 'tooth', f: 'yaF' });
+def('ج', { m: 'haM', f: 'haF', d: { b: 1 } });
+def('ح', { m: 'haM', f: 'haF' });
+def('خ', { m: 'haM', f: 'haF', d: { a: 1 } });
+def('د', { f: 'dal' });
+def('ذ', { f: 'dal', d: { a: 1 } });
+def('ر', { f: 'ra' });
+def('ز', { f: 'ra', d: { a: 1 } });
+def('س', { m: 'sinM', f: 'sinF' });
+def('ش', { m: 'sinM', f: 'sinF', d: { a: 3 } });
+def('ص', { m: 'sadM', f: 'sadF' });
+def('ض', { m: 'sadM', f: 'sadF', d: { a: 1 } });
+def('ط', { m: 'ta', f: 'ta' });
+def('ظ', { m: 'ta', f: 'ta', d: { a: 1 } });
+def('ع', { m: 'aynM', f: 'aynF' });
+def('غ', { m: 'aynM', f: 'aynF', d: { a: 1 } });
+def('ف', { m: 'faM', f: 'faF', d: { a: 1 } });
+def('ق', { m: 'faM', f: 'faF', d: { a: 2 } });
+def('كکگ', { m: 'kafM', f: 'kafF' });
+def('ل', { m: 'lamM', f: 'lamF' });
+def('م', { m: 'mim', f: 'mim' });
+def('ه', { m: 'hehM', f: 'hehF' });
+def('ة', { f: 'hehF', d: { a: 2 } });
+def('وؤ', { f: 'waw' });
+def('ء', { f: 'hamza' });
+
+function cleanText(t) {
+  t = t.normalize('NFKC').replace(/[ؐ-ًؚ-ٰٟۖ-ۭـ࣓-ࣿ]/g, '');
+  let out = '';
+  const unknown = new Set();
+  for (const ch of t) {
+    if (CH[ch]) out += ch;
+    else {
+      out += ' ';
+      if (!/[\s\d٠-٩۰-۹۝۞﴾﴿().,،؛:!?«»"'\-\[\]{}*]/.test(ch)) unknown.add(ch);
+    }
+  }
+  return { text: out.replace(/\s+/g, ' ').trim(), unknown: [...unknown] };
+}
+
+function wordTokens(word) {
+  const ls = [...word].map(c => CH[c]);
+  const toks = [];
+  ls.forEach((L, i) => {
+    const last = i === ls.length - 1;
+    toks.push({ t: 'g', g: GL[L.j && !last ? L.m : L.f], d: L.d });
+    if (!last) toks.push({ t: L.j ? 'j' : 's' });
+  });
+  return toks;
+}
+const tokW = t => t.t === 'g' ? t.g.w : 1;
+
+/* ---------------- One band of text ----------------
+   Local coordinates: u runs left→right along the band (reading starts at the
+   right end), v runs 0 (inner gap row) → 7 (baseline). With `reserve`, column 0
+   stays empty so the band never touches the next one at a corner. With `rise`,
+   the alef/lam stems that open the band are returned so they can be carried up
+   to the top edge of the square. */
+function renderBand(words, Lb, o, reserve, rise, bh = BH) {
+  const Hb = bh - 1, g = new Uint8Array(Lb * bh), stems = {}, risers = [];
+  // a glyph drawn H rows high sits on the baseline (row Hb)
+  const draw = (gl, px, H, val, ext) => {
+    for (const [r, c] of gl.at(H)) {
+      const y = (1 + Hb - H + r) * Lb + px;
+      if (c < gl.sc || gl.sc < 0) g[y + c] = val;
+      else if (c > gl.sc) g[y + c + ext] = val;
+      else for (let e = 0; e <= ext; e++) g[y + c + e] = val;
+    }
+  };
+  const toks = [];
+  words.forEach((w, i) => { if (i) toks.push({ t: 'w' }); for (const t of w) toks.push(Object.assign({}, t)); });
+  if (rise) for (const t of toks) { if (t.t === 'g' && !(t.g.w === 1 && t.g.arm)) break; t.lead = true; }
+  const x0 = reserve ? 1 : 0;
+  toks.forEach(t => { t.len = t.t === 'w' ? o.wordGap : t.t === 'g' ? 0 : 1; });
+  const natural = toks.reduce((s, t) => s + (t.t === 'g' ? t.g.w : 0) + t.len, 0);
+  const extra = Math.max(0, Lb - x0 - natural);
+  const pick = list => { const free = list.filter(t => !t.lead); return free.length ? free : list; };
+  // kashida lengthens joins and the horizontal strokes inside letters alike
+  const joins = pick(toks.filter(t => t.t === 'j' || (t.t === 'g' && t.g.sc >= 0))), spaces = pick(toks.filter(t => t.t === 'w'));
+  const slots = o.justify === 'spaces' ? (spaces.length ? spaces : joins)
+              : o.justify === 'mixed' ? joins.concat(spaces)
+              : (joins.length ? joins : spaces);
+  let x = Lb;
+  if (slots.length) slots.forEach((t, i) => t.len += share(i, slots.length, extra));
+  else x -= extra;   // nothing can stretch: keep the left edge flush
+  const placed = [];
+  for (const t of toks) {
+    if (t.t === 'g') {
+      const ext = t.len, w = t.g.w + ext;
+      x -= w;
+      t.H = t.g.tall ? Hb : t.g.h;
+      draw(t.g, x, t.H, 1, ext);
+      placed.push([x, t.g, t.d, t.H, ext, w]);
+      if (t.lead) risers.push(x);
+      else if (t.g.arm) stems[x + t.g.arm.c + (t.g.sc >= 0 && t.g.arm.c > t.g.sc ? ext : 0)] = t.g.arm;
+    } else {
+      x -= t.len;
+      if (t.t === 'j') for (let c = 0; c < t.len; c++) g[Hb * Lb + x + c] = 1;
+    }
+  }
+  if (o.arms) addArms(g, Lb, stems, x0);
+  if (o.dots) placeDots(g, Lb, bh, placed, x0);
+  // short letters grow upward: to the full band height, or up to the gap under a bent stem
+  for (const [px, gl, , H0, ext, w] of placed) {
+    for (const H of [Hb, Hb - 2]) {
+      if (H <= H0) continue;
+      let free = true;
+      for (let v = 1 + Hb - H - (H < Hb ? 1 : 0); v <= Hb - H0 && free; v++) for (let c = px - 1; c <= px + w && free; c++) if (c >= 0 && c < Lb && g[v * Lb + c]) free = false;
+      if (!free) continue;
+      draw(gl, px, H0, 0, ext);
+      draw(gl, px, H, 1, ext);
+      break;
+    }
+  }
+  return { g, risers };
+}
+
+// Dots are single cells with a clear ring of empty cells all round. Each one goes to the
+// free spot nearest its letter (above or below it, or inside a bowl); with no room it is left out.
+function placeDots(g, Lb, bh, placed, x0) {
+  const vMax = bh - 2;
+  const clear = (u, v) => {
+    if (u < x0 || u >= Lb || v < 1 || v > vMax) return false;
+    for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) {
+      const uu = u + du, vv = v + dv;
+      if (uu >= 0 && uu < Lb && vv >= 0 && vv < bh && g[vv * Lb + uu]) return false;
+    }
+    return true;
+  };
+  for (const [px, gl, d, H0, , w] of placed) {
+    if (!d) continue;
+    const n = d.a || d.b, top = bh - H0, cx = px + (w - 1) / 2;
+    const vt = d.a ? Math.max(1, top - 2) : vMax;
+    let best = null;
+    for (let v = Math.max(1, vt - 3); v <= Math.min(vMax, vt + 3); v++) for (let u = px - 1; u + 2 * (n - 1) <= px + w; u++) {
+      let ok = true;
+      for (let i = 0; i < n && ok; i++) ok = clear(u + 2 * i, v);
+      if (!ok) continue;
+      const score = Math.abs(u + (n - 1) - cx) + 2 * Math.abs(v - vt);
+      if (!best || score < best[0]) best = [score, u, v];
+    }
+    if (best) for (let i = 0; i < n; i++) g[best[2] * Lb + best[1] + 2 * i] = 1;
+  }
+}
+
+// Bend the heads of alef/lam/ta over runs of short letters, leaving a one-cell gap.
+function addArms(g, Lb, stems, x0) {
+  const low = c => !g[Lb + c] && !g[2 * Lb + c], used = new Set();
+  let c = x0;
+  while (c < Lb) {
+    if (!low(c)) { c++; continue; }
+    const a = c; while (c < Lb && low(c)) c++;
+    const b = c - 1, R = stems[b + 1], Lf = stems[a - 1];
+    let p = -1, q = -2;
+    if (R && R.L) { p = a === x0 ? a : a + 1; q = b; used.add(b + 1); }
+    else if (Lf && Lf.R && !used.has(a - 1)) { p = a; q = b === Lb - 1 ? b : b - 1; used.add(a - 1); }
+    for (let k = p; k <= q; k++) g[Lb + k] = 1;
+  }
+}
+
+const share = (i, k, tot) => Math.floor((i + 1) * tot / k) - Math.floor(i * tot / k);
+
+/* ---------------- Stacked block ----------------
+   n lines in an S×S square, S = 8n − 1, so the top line's stems touch the top
+   edge and the bottom baseline is the bottom edge. Lines are built from the
+   bottom up; the stems that open a line rise to the top edge and the lines
+   above step in to their left. Every line is stretched flush to both sides. */
+function stackFit(words, ww, n, o, bh = BH) {
+  const N = ww.length, g = o.wordGap, S = n * bh - 1;
+  if (N < n || Math.max(...ww) > S) return null;
+  const seq = o.fromTop ? ww.map((_, i) => N - 1 - i) : ww.map((_, i) => i);
+  const attempt = f => {
+    let R = S, i = 0, slack = 0; const rows = [];
+    for (let k = 0; k < n; k++) {
+      const last = k === n - 1, cap = last ? R : Math.floor(f * R);
+      let w = 0; const grp = [];
+      while (i < N) {
+        const add = (grp.length ? g : 0) + ww[seq[i]];
+        if (w + add <= (grp.length ? cap : R)) { w += add; grp.push(seq[i]); i++; } else break;
+      }
+      if (!grp.length) return i >= N ? 'short' : 'long';
+      if (last && i < N) return 'long';
+      slack += (R - w) * (R - w);
+      if (o.fromTop) grp.reverse();
+      const { g: local, risers } = renderBand(grp.map(j => words[j]), R, o, false, o.rise && !last, bh);
+      rows.push({ local, R, k, risers });
+      if (risers.length) R = Math.min(...risers) - 1;
+      if (R < 3 && !last) return 'long';
+    }
+    rows.slack = slack;
+    return rows;
+  };
+  // try many line breaks and keep the one that leaves the least stretched-out space
+  let best = null;
+  for (let f = 1; f >= 0.2; f -= 0.02) {
+    const r = attempt(f);
+    if (Array.isArray(r) && (!best || r.slack < best.slack)) best = r;
+  }
+  return best ? { rows: best, S, n, bh } : null;
+}
+const fitStack = (words, ww, n, o, bh) => stackFit(words, ww, n, o, bh) || (o.rise ? stackFit(words, ww, n, Object.assign({}, o, { rise: false }), bh) : null);
+function placeStack(st, ox, oy, T, grid) {
+  for (const row of st.rows) {
+    const y0 = st.S - st.bh * (row.k + 1);
+    for (let v = 1; v < st.bh; v++) for (let u = 0; u < row.R; u++) if (row.local[v * row.R + u]) grid[(oy + y0 + v) * T + ox + u] = 1;
+    for (const c of row.risers) for (let y = 0; y <= y0; y++) grid[(oy + y) * T + ox + c] = 1;
+  }
+}
+
+/* ---------------- Compositions ---------------- */
+function layout(text, o) {
+  const words = text.split(' ').filter(Boolean).map(wordTokens);
+  if (!words.length) return null;
+  const ww = words.map(w => w.reduce((s, t) => s + tokW(t), 0));
+  if (o.layout === 'stacked') return layoutStacked(words, ww, o);
+  return layoutRings(words, ww, o) || Object.assign(layoutStacked(words, ww, o), { fallback: true });
+}
+
+function frameUp(S, o) {
+  const F = o.frame ? 2 : 0, T = S + 2 * F, grid = new Uint8Array(T * T);
+  if (o.frame) for (let i = 0; i < T; i++) { grid[i] = grid[(T - 1) * T + i] = grid[i * T] = grid[i * T + T - 1] = 1; }
+  return { F, T, grid };
+}
+
+function layoutStacked(words, ww, o) {
+  const N = ww.length;
+  // every (lines, line height) pair, smallest square first: taller lines often beat
+  // extra lines, which would leave a single stretched word per line
+  const cands = [];
+  for (let n = 1; n <= N; n++) if (!(o.lines > 0) || n === Math.min(o.lines, N))
+    for (let bh = BH; bh <= BH + 6; bh++) cands.push([n * bh - 1, n, bh]);
+  cands.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
+  let st = null;
+  for (const [, n, bh] of cands) if ((st = stackFit(words, ww, n, o, bh))) break;
+  if (!st && o.rise) for (const [, n, bh] of cands) if ((st = stackFit(words, ww, n, Object.assign({}, o, { rise: false }), bh))) break;
+  if (st) {
+    const { F, T, grid } = frameUp(st.S, o);
+    placeStack(st, F, F, T, grid);
+    return { grid, T, S: st.S, n: st.n, unit: 'lines' };
+  }
+  // too short to fill a square: one line, centred
+  const W = ww.reduce((s, v) => s + v, 0) + o.wordGap * (N - 1), S = Math.max(W, BH - 1);
+  const { F, T, grid } = frameUp(S, o);
+  const { g } = renderBand(words, S, o, false, false), y0 = Math.floor((S - BH + 1) / 2) - 1;
+  for (let v = 1; v < BH; v++) for (let u = 0; u < S; u++) if (g[v * S + u]) grid[(F + y0 + v) * T + F + u] = 1;
+  return { grid, T, S, n: 1, unit: 'lines', short: true };
+}
+
+// Pinwheel rings: each ring is four bands of length s−BH, read bottom → left → top → right,
+// letters standing toward the centre, then the next ring inward. After m rings the
+// centre is either empty or exactly a stacked block (8n − 1 cells).
+function ringPlan(S, m) {
+  const bands = []; let o = 0, s = S;
+  for (let r = 0; r < m; r++) { for (let side = 0; side < 4; side++) bands.push({ o, s, side, Lb: s - BH }); o += BH; s -= 2 * BH; }
+  return { bands, center: { o, s } };
+}
+function bandToGrid(local, b, F, T, grid) {
+  const { o, s, side, Lb } = b;
+  for (let v = 0; v < BH; v++) for (let u = 0; u < Lb; u++) {
+    if (!local[v * Lb + u]) continue;
+    let x, y;
+    if (side === 0) { x = o + u; y = o + s - BH + v; }
+    else if (side === 1) { x = o + BH - 1 - v; y = o + u; }
+    else if (side === 2) { x = o + s - 1 - u; y = o + BH - 1 - v; }
+    else { x = o + s - BH + v; y = o + s - 1 - u; }
+    grid[(y + F) * T + x + F] = 1;
+  }
+}
+const centreLines = c => c === 0 ? 0 : (c + 1) % BH === 0 ? (c + 1) / BH : -1;
+
+function layoutRings(words, ww, o) {
+  const N = ww.length, g = o.wordGap;
+  const lineW = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += ww[i]; return s + g * (b - a - 1); };
+  const build = (S, plan, assign, centre) => {
+    const { F, T, grid } = frameUp(S, o);
+    plan.bands.forEach((b, i) => bandToGrid(renderBand(words.slice(assign[i][0], assign[i][1]), b.Lb, o, true, false).g, b, F, T, grid));
+    if (centre) placeStack(centre, F + plan.center.o, F + plan.center.o, T, grid);
+    return { grid, T, S, n: plan.bands.length + (centre ? centre.n : 0), unit: 'bands' };
+  };
+  if (o.layout === 'fourfold') {
+    // the phrase on all four sides; the centre repeats it as a stacked block
+    const W = lineW(0, N);
+    for (let nc = 0; nc < 40; nc++) {
+      const S = 2 * BH + (nc ? nc * BH - 1 : 0);
+      if (S < W + 1 + BH) continue;
+      const plan = ringPlan(S, 1), centre = nc ? fitStack(words, ww, nc, Object.assign({}, o, { rise: true })) : null;
+      if (nc && !centre) continue;
+      return build(S, plan, plan.bands.map(() => [0, N]), centre);
+    }
+    return null;
+  }
+  // spiral: every band carries words, the last words fill the centre block
+  const limit = Math.max(300, Math.ceil(Math.sqrt(lineW(0, N) * BH * 1.6)) + 40);
+  for (let S = Math.max(2 * BH, Math.max(...ww) + 1 + BH); S < limit; S++) {
+    for (let m = Math.floor(S / (2 * BH)); m >= 1; m--) {
+      const plan = ringPlan(S, m), B = plan.bands.length, nc = centreLines(plan.center.s);
+      if (nc < 0 || B > N) continue;
+      const pick = balance(plan.bands, N, lineW);
+      for (let t = nc ? N - nc : N; t >= B; t--) {
+        const assign = pick(t);
+        if (!assign) continue;
+        const centre = nc ? fitStack(words.slice(t), ww.slice(t), nc, Object.assign({}, o, { rise: true })) : null;
+        if (nc && !centre) continue;
+        return build(S, plan, assign, centre);
+      }
+    }
+  }
+  return null;
+}
+
+// split the first t words into exactly bands.length non-empty groups, minimising squared slack;
+// one table answers every t ≤ N
+function balance(bands, N, lineW) {
+  const k = bands.length, INF = 1e18;
+  const dp = Array.from({ length: k + 1 }, () => new Float64Array(N + 1).fill(INF));
+  const from = Array.from({ length: k + 1 }, () => new Int32Array(N + 1));
+  dp[0][0] = 0;
+  for (let j = 1; j <= k; j++) {
+    const cap = bands[j - 1].Lb - 1;
+    for (let i = j; i <= N; i++) for (let a = i - 1; a >= j - 1; a--) {
+      const w = lineW(a, i); if (w > cap) break;
+      const c = dp[j - 1][a] + (cap - w) * (cap - w);
+      if (c < dp[j][i]) { dp[j][i] = c; from[j][i] = a; }
+    }
+  }
+  return t => {
+    if (dp[k][t] >= INF) return null;
+    const out = [];
+    for (let j = k, i = t; j > 0; j--) { const a = from[j][i]; out.unshift([a, i]); i = a; }
+    return out;
+  };
+}
+
+/* ---------------- State ---------------- */
+const $ = id => document.getElementById(id);
+const SAMPLES = [
+  ['الإخلاص', 'بسم الله الرحمن الرحيم قل هو الله أحد الله الصمد لم يلد ولم يولد ولم يكن له كفوا أحد'],
+  ['الفاتحة', 'بسم الله الرحمن الرحيم الحمد لله رب العالمين الرحمن الرحيم مالك يوم الدين إياك نعبد وإياك نستعين اهدنا الصراط المستقيم صراط الذين أنعمت عليهم غير المغضوب عليهم ولا الضالين'],
+  ['التوحيد', 'لا إله إلا الله'],
+  ['الحمد لله', 'الحمد لله'],
+  ['الشرح ٦', 'إن مع العسر يسرا'],
+  ['هود ٨٨', 'وما توفيقي إلا بالله عليه توكلت وإليه أنيب']
+];
+SAMPLES.forEach(([name, txt]) => {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = name;
+  b.onclick = () => { $('text').value = txt; update(); };
+  $('chips').appendChild(b);
+});
+for (let i = 1; i <= 12; i++) { const op = document.createElement('option'); op.value = i; op.textContent = i + (i === 1 ? ' line' : ' lines'); $('lines').appendChild(op); }
+
+let L = null, O = null;
+const num = (id, d) => { const v = parseFloat($(id).value); return isFinite(v) ? v : d; };
+function readOpts() {
+  return {
+    plate: Math.max(10, num('plate', 195)), margin: Math.max(0, num('margin', 6)),
+    frame: $('frame').checked, layout: $('layout').value, diamond: $('orient').value === 'diamond',
+    lines: parseInt($('lines').value, 10) || 0, justify: $('justify').value,
+    wordGap: Math.max(1, Math.round(num('wordGap', 1))), arms: $('arms').checked, dots: $('dots').checked,
+    rise: $('rise').checked, fromTop: $('start').value === 'top',
+    style: $('style').value, thick: Math.max(0.2, num('thick', 5)), relief: Math.max(0.1, num('relief', 2)),
+    dpi: parseInt($('dpi').value, 10), svgPlate: $('svgPlate').value === '1'
+  };
+}
+const fmt = (v, d = 2) => (+v.toFixed(d)).toString();
+function geom() {
+  const inner = O.plate - 2 * O.margin;
+  return { inner, cell: inner / (O.diamond ? L.T * Math.SQRT2 : L.T) };
+}
+// grid corner (gx, gy), y down → plate millimetres, y down
+function toPlate(gx, gy) {
+  const { cell } = geom();
+  if (!O.diamond) return [O.margin + gx * cell, O.margin + gy * cell];
+  const dx = (gx - L.T / 2) * cell, dy = (gy - L.T / 2) * cell, k = Math.SQRT1_2;
+  return [O.plate / 2 + (dx - dy) * k, O.plate / 2 + (dx + dy) * k];
+}
+
+const LAYOUT_NOTES = {
+  stacked: 'Lines fill the square edge to edge. Alef and lam of the lower lines rise to the top edge and the lines above step in beside them.',
+  spiral: 'Text starts upright along the bottom, turns at each corner and winds inward; the last words fill the centre.',
+  fourfold: 'The phrase is written on all four sides, turning around the square, and again in the centre. Best for a short phrase.'
+};
+
+function update() {
+  O = readOpts();
+  const { text, unknown } = cleanText($('text').value);
+  $('unknown').hidden = !unknown.length;
+  if (unknown.length) $('unknown').textContent = 'Skipped characters that have no square Kufic shape here: ' + unknown.join(' ');
+  $('reading').textContent = text;
+  $('layoutNote').textContent = LAYOUT_NOTES[O.layout];
+  $('linesField').hidden = $('startField').hidden = $('riseField').hidden = O.layout !== 'stacked';
+  L = layout(text, O);
+  $('shortWarn').hidden = !(L && (L.short || L.fallback));
+  if (L) $('shortWarn').textContent = L.fallback ? `${O.layout === 'fourfold' ? 'Four-fold' : 'Spiral'} has no room for this text without filler, so it is shown Stacked. ${O.layout === 'fourfold' ? 'Four-fold needs a phrase of three or more words to fill its centre.' : 'Try a longer passage.'}`
+    : 'This text is too short to fill a square with whole lines. Add words, or try Four-fold.';
+  if (L) L.path = traceLoops(L.grid, L.T);
+  const P = fmt(O.plate, 1);
+  $('dimTop').textContent = P + ' mm'; $('dimSide').textContent = P + ' mm';
+  document.querySelectorAll('.note').forEach(n => { if (n.dataset.t || n.textContent.includes('{P}')) { n.dataset.t = n.dataset.t || n.textContent; n.textContent = n.dataset.t.replaceAll('{P}', P); } });
+  const px = Math.round(O.plate / 25.4 * O.dpi);
+  $('pngInfo').textContent = O.dpi + ' dpi · ' + px + ' px';
+  $('reliefField').hidden = O.style === 'letters';
+  const engr = O.style === 'engraved' && O.diamond;
+  const total = O.style === 'raised' || engr ? O.thick + O.relief : O.thick;
+  $('thickNote').textContent =
+    engr ? `Engraving is not available for the diamond, so the STL uses raised letters: ${fmt(total)} mm in total.` :
+    O.style === 'raised' ? `Total height ${fmt(total)} mm: ${fmt(O.thick)} mm plate with letters standing ${fmt(O.relief)} mm proud.` :
+    O.style === 'engraved' ? `${fmt(O.thick)} mm plate with letters cut ${fmt(Math.min(O.relief, O.thick - 0.2))} mm deep.` :
+    `Letters extruded ${fmt(O.thick)} mm. Turn the border on so every piece stays connected.`;
+  if (!L) { $('stats').innerHTML = '<span>Type some Arabic text to begin.</span>'; draw2d(); return; }
+  const { cell } = geom();
+  $('stats').innerHTML = `<span>grid <b>${L.T}×${L.T}</b></span><span>${L.unit} <b>${L.n}</b></span><span>stroke <b>${fmt(cell)} mm</b></span>`;
+  draw2d();
+  if (!$('view3d').hidden) build3d();
+}
+
+/* ---------------- Outline tracing ---------------- */
+function traceLoops(grid, T) {
+  const W1 = T + 1, edges = [], out = new Map();
+  const f = (x, y) => x >= 0 && y >= 0 && x < T && y < T && grid[y * T + x] > 0;
+  const add = (x0, y0, x1, y1) => { const k = y0 * W1 + x0; if (!out.has(k)) out.set(k, []); out.get(k).push(edges.length); edges.push([x0, y0, x1, y1]); };
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (f(x, y)) {
+    if (!f(x, y - 1)) add(x, y, x + 1, y);
+    if (!f(x + 1, y)) add(x + 1, y, x + 1, y + 1);
+    if (!f(x, y + 1)) add(x + 1, y + 1, x, y + 1);
+    if (!f(x - 1, y)) add(x, y + 1, x, y);
+  }
+  const used = new Uint8Array(edges.length), loops = [];
+  for (let i = 0; i < edges.length; i++) {
+    if (used[i]) continue;
+    const pts = []; let e = i;
+    while (e !== undefined && !used[e]) {
+      used[e] = 1; const [x0, y0, x1, y1] = edges[e]; pts.push([x0, y0]);
+      e = (out.get(y1 * W1 + x1) || []).find(k => !used[k]);
+    }
+    loops.push(pts.filter((p, j) => {
+      const a = pts[(j - 1 + pts.length) % pts.length], b = pts[(j + 1) % pts.length];
+      return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
+    }));
+  }
+  return loops;
+}
+
+/* ---------------- 2D drawing ---------------- */
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function paintLetters(ctx, k) {   // k = pixels per millimetre
+  ctx.beginPath();
+  for (const lp of L.path) lp.forEach(([x, y], i) => { const [px, py] = toPlate(x, y); i ? ctx.lineTo(px * k, py * k) : ctx.moveTo(px * k, py * k); });
+  ctx.closePath();
+  ctx.fill('nonzero');
+}
+function draw2d() {
+  const cv = $('view2d'), r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const s = Math.max(1, Math.round(r.width * dpr));
+  if (cv.width !== s) { cv.width = s; cv.height = s; }
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, s, s);
+  ctx.fillStyle = css('--plate'); ctx.fillRect(0, 0, s, s);
+  ctx.strokeStyle = css('--plate-edge'); ctx.lineWidth = Math.max(1, dpr); ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, s - ctx.lineWidth, s - ctx.lineWidth);
+  if (!L) return;
+  ctx.fillStyle = css('--lapis');
+  paintLetters(ctx, s / O.plate);
+}
+
+function makeSVG() {
+  const r = v => +v.toFixed(4);
+  const d = L.path.map(lp => 'M' + lp.map(([x, y]) => toPlate(x, y).map(r).join(' ')).join('L') + 'Z').join('');
+  const P = r(O.plate);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${P}mm" height="${P}mm" viewBox="0 0 ${P} ${P}">
+  <title>Square Kufic plate ${P} x ${P} mm</title>
+${O.svgPlate ? `  <g id="plate"><rect x="0" y="0" width="${P}" height="${P}" fill="#d9d9d9"/></g>\n` : ''}  <g id="letters"><path fill="#000000" fill-rule="nonzero" d="${d}"/></g>
+</svg>`;
+}
+
+/* ---------------- PNG ---------------- */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8, crc = 0xFFFFFFFF) { for (let i = 0; i < u8.length; i++) crc = CRC_T[(crc ^ u8[i]) & 255] ^ (crc >>> 8); return crc; }
+const crcDone = c => (c ^ 0xFFFFFFFF) >>> 0;
+
+async function makePNG() {
+  const px = Math.round(O.plate / 25.4 * O.dpi);
+  const cv = document.createElement('canvas'); cv.width = cv.height = px;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, px, px);
+  ctx.fillStyle = '#000000';
+  paintLetters(ctx, px / O.plate);
+  const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+  // add a pHYs chunk so the image carries its physical size
+  const src = new Uint8Array(await blob.arrayBuffer());
+  const ppm = Math.round(O.dpi / 0.0254);
+  const chunk = new Uint8Array(21), dv = new DataView(chunk.buffer);
+  dv.setUint32(0, 9); chunk.set([0x70, 0x48, 0x59, 0x73], 4); dv.setUint32(8, ppm); dv.setUint32(12, ppm); chunk[16] = 1;
+  dv.setUint32(17, crcDone(crc32(chunk.subarray(4, 17))));
+  const outp = new Uint8Array(src.length + 21);
+  outp.set(src.subarray(0, 33)); outp.set(chunk, 33); outp.set(src.subarray(33), 54);
+  return new Blob([outp], { type: 'image/png' });
+}
+
+/* ---------------- 3D mesh ----------------
+   A height field is meshed in its own (x, y-down) space with outward winding,
+   then every vertex is mapped to plate millimetres (y up). That map mirrors,
+   so each triangle's winding is reversed on the way out. */
+function heightMesh(hm, nx, ny, ex, ey, txt, toWorld, zOff, pos, tag, tagWall) {
+  const levels = [...new Set([0, ...hm])].sort((a, b) => a - b);
+  const H = (i, j) => (i < 0 || j < 0 || i >= nx || j >= ny) ? 0 : hm[j * nx + i];
+  const isT = (i, j) => !(i < 0 || j < 0 || i >= nx || j >= ny) && txt[j * nx + i] === 1;
+  function quad(a, b, c, d, n, t) {
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const ok = (uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2] >= 0;
+    const tri = ok ? [a, c, b, a, d, c] : [a, b, c, a, c, d];   // reversed for the mirroring map
+    for (const p of tri) { const [X, Y] = toWorld(p[0], p[1]); pos.push(X, Y, p[2] + zOff); }
+    tag.push(t, t);
+  }
+  function wall(p0, p1, zlo, zhi, n, t) {   // split at every height level to avoid T-junctions
+    for (let k = 0; k < levels.length - 1; k++) {
+      const a = Math.max(zlo, levels[k]), b = Math.min(zhi, levels[k + 1]);
+      if (b - a > 1e-9) quad([p0[0], p0[1], a], [p1[0], p1[1], a], [p1[0], p1[1], b], [p0[0], p0[1], b], n, t);
+    }
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const h = H(i, j); if (h <= 0) continue;
+    const x0 = ex[i], x1 = ex[i + 1], y0 = ey[j], y1 = ey[j + 1];
+    quad([x0, y0, h], [x1, y0, h], [x1, y1, h], [x0, y1, h], [0, 0, 1], isT(i, j) ? 1 : 0);
+    quad([x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0], [0, 0, -1], 0);
+  }
+  for (let j = 0; j < ny; j++) for (let i = 0; i <= nx; i++) {
+    const hl = H(i - 1, j), hr = H(i, j); if (hl === hr) continue;
+    const t = tagWall(hl > hr ? isT(i - 1, j) : isT(i, j), hl > hr ? isT(i, j) : isT(i - 1, j));
+    wall([ex[i], ey[j]], [ex[i], ey[j + 1]], Math.min(hl, hr), Math.max(hl, hr), [hl > hr ? 1 : -1, 0, 0], t ? 1 : 0);
+  }
+  for (let j = 0; j <= ny; j++) for (let i = 0; i < nx; i++) {
+    const ht = H(i, j - 1), hb = H(i, j); if (ht === hb) continue;
+    const t = tagWall(ht > hb ? isT(i, j - 1) : isT(i, j), ht > hb ? isT(i, j) : isT(i, j - 1));
+    wall([ex[i], ey[j]], [ex[i + 1], ey[j]], Math.min(ht, hb), Math.max(ht, hb), [0, ht > hb ? 1 : -1, 0], t ? 1 : 0);
+  }
+}
+
+function buildMesh() {
+  const { cell } = geom(), P = O.plate, m = O.margin, T = L.T;
+  const style = O.style === 'engraved' && O.diamond ? 'raised' : O.style;
+  const relief = style === 'engraved' ? Math.min(O.relief, O.thick - 0.2) : O.relief;
+  const pos = [], tag = [];
+  const flipY = (x, y) => [x, P - y];
+  const hiTag = (hi) => hi;
+  if (O.diamond) {
+    // plate slab, then the rotated letters standing on it
+    const hText = style === 'letters' ? O.thick : relief, zOff = style === 'letters' ? 0 : O.thick;
+    if (style !== 'letters') heightMesh([O.thick], 1, 1, [0, P], [0, P], [0], flipY, 0, pos, tag, () => 0);
+    const hm = new Float32Array(T * T), txt = new Uint8Array(T * T);
+    for (let i = 0; i < T * T; i++) if (L.grid[i]) { hm[i] = hText; txt[i] = 1; }
+    const e = Array.from({ length: T + 1 }, (_, i) => i);
+    heightMesh(hm, T, T, e, e, txt, (x, y) => flipY(...toPlate(x, y)), zOff, pos, tag, hiTag);
+  } else {
+    const base = style === 'letters' ? 0 : O.thick;
+    const hText = style === 'raised' ? O.thick + relief : style === 'engraved' ? O.thick - relief : O.thick;
+    const edges = [0]; if (m > 0) edges.push(m);
+    for (let i = 1; i <= T; i++) edges.push(m + i * cell);
+    if (m > 0) { edges[edges.length - 1] = P - m; edges.push(P); }
+    const nx = edges.length - 1, off = m > 0 ? 1 : 0;
+    const hm = new Float32Array(nx * nx).fill(base), txt = new Uint8Array(nx * nx);
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (L.grid[y * T + x]) { const i = (y + off) * nx + x + off; hm[i] = hText; txt[i] = 1; }
+    heightMesh(hm, nx, nx, edges, edges, txt, flipY, 0, pos, tag, style === 'engraved' ? (hi, lo) => lo : hiTag);
+  }
+  return { pos: new Float32Array(pos), tag };
+}
+
+function makeSTL() {
+  const { pos } = buildMesh(), nt = pos.length / 9;
+  const buf = new ArrayBuffer(84 + nt * 50), dv = new DataView(buf);
+  const head = 'Square Kufic plate ' + O.plate + 'mm';
+  for (let i = 0; i < Math.min(80, head.length); i++) dv.setUint8(i, head.charCodeAt(i));
+  dv.setUint32(80, nt, true);
+  let o = 84;
+  for (let t = 0; t < nt; t++) {
+    const p = pos.subarray(t * 9, t * 9 + 9);
+    const ux = p[3] - p[0], uy = p[4] - p[1], uz = p[5] - p[2], vx = p[6] - p[0], vy = p[7] - p[1], vz = p[8] - p[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1;
+    dv.setFloat32(o, nx / l, true); dv.setFloat32(o + 4, ny / l, true); dv.setFloat32(o + 8, nz / l, true); o += 12;
+    for (let k = 0; k < 9; k++) { dv.setFloat32(o, p[k], true); o += 4; }
+    dv.setUint16(o, 0, true); o += 2;
+  }
+  return new Uint8Array(buf);
+}
+
+function makeZip(name, data) {   // single stored entry
+  const enc = new TextEncoder().encode(name), crc = crcDone(crc32(data));
+  const lh = new Uint8Array(30 + enc.length), ld = new DataView(lh.buffer);
+  ld.setUint32(0, 0x04034b50, true); ld.setUint16(4, 20, true); ld.setUint32(14, crc, true); ld.setUint32(18, data.length, true); ld.setUint32(22, data.length, true); ld.setUint16(26, enc.length, true); lh.set(enc, 30);
+  const ch = new Uint8Array(46 + enc.length), cd = new DataView(ch.buffer);
+  cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, data.length, true); cd.setUint16(28, enc.length, true); ch.set(enc, 46);
+  const end = new Uint8Array(22), ed = new DataView(end.buffer);
+  ed.setUint32(0, 0x06054b50, true); ed.setUint16(8, 1, true); ed.setUint16(10, 1, true); ed.setUint32(12, ch.length, true); ed.setUint32(16, lh.length + data.length, true);
+  return new Blob([lh, data, ch, end], { type: 'application/zip' });
+}
+
+/* ---------------- 3D preview ---------------- */
+let R3 = null;
+function init3d() {
+  if (R3 || !window.THREE) return !!R3;
+  const cv = $('view3d');
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, 1, 1, 10000);
+  camera.up.set(0, 0, 1);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x445066, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75); sun.position.set(-0.6, 1, 1.4); scene.add(sun);
+  const controls = THREE.OrbitControls ? new THREE.OrbitControls(camera, cv) : null;
+  if (controls) { controls.enableDamping = true; controls.addEventListener('change', () => renderer.render(scene, camera)); }
+  R3 = { renderer, scene, camera, controls, mesh: null, fitted: 0 };
+  const loop = () => { if (!$('view3d').hidden && controls) controls.update(); requestAnimationFrame(loop); };
+  loop();
+  return true;
+}
+function build3d() {
+  if (!L || !init3d()) return;
+  const { pos, tag } = buildMesh(), P = O.plate;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const cText = new THREE.Color(css('--lapis')), cPlate = new THREE.Color(css('--plate'));
+  const cols = new Float32Array(pos.length);
+  tag.forEach((t, i) => { const c = t ? cText : cPlate; for (let v = 0; v < 3; v++) cols.set([c.r, c.g, c.b], (i * 3 + v) * 3); });
+  geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  geo.translate(-P / 2, -P / 2, 0);
+  if (R3.mesh) { R3.scene.remove(R3.mesh); R3.mesh.geometry.dispose(); }
+  R3.mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.05 }));
+  R3.scene.add(R3.mesh);
+  if (R3.fitted !== P) { R3.camera.position.set(0, -P * 1.55, P * 1.75); R3.fitted = P; if (R3.controls) R3.controls.target.set(0, 0, 0); }
+  resize3d();
+}
+function resize3d() {
+  if (!R3) return;
+  const r = $('view3d').getBoundingClientRect();
+  R3.renderer.setSize(r.width, r.height, false);
+  R3.camera.aspect = r.width / Math.max(1, r.height); R3.camera.updateProjectionMatrix();
+  R3.camera.lookAt(0, 0, 0);
+  R3.renderer.render(R3.scene, R3.camera);
+}
+function showTab(three) {
+  $('tab2d').setAttribute('aria-selected', !three); $('tab3d').setAttribute('aria-selected', three);
+  $('view3d').hidden = !three; $('hint3d').hidden = !three; $('view2d').hidden = three;
+  if (three) { if (!window.THREE) toast('The 3D viewer could not load. Exports still work.'); build3d(); } else draw2d();
+}
+$('tab2d').onclick = () => showTab(false);
+$('tab3d').onclick = () => showTab(true);
+
+/* ---------------- Saving ---------------- */
+let dlP = null;
+try { dlP = window.claude && window.claude.use ? window.claude.use('downloads') : null; } catch (e) { dlP = null; }
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 3200); }
+function baseName() { return 'kufic-plate-' + fmt(O.plate, 1) + 'mm'; }
+async function save(filename, blob, zipInViewer) {
+  let dl = null;
+  if (dlP) { try { dl = await dlP; } catch (e) { dl = null; } }
+  if (dl) {
+    let name = filename, data = blob;
+    if (zipInViewer) { data = makeZip(filename, new Uint8Array(await blob.arrayBuffer())); name = filename.replace(/\.\w+$/, '') + '.zip'; }
+    try { await dl.save({ filename: name, data }); toast('Saved ' + name); }
+    catch (e) { toast(e && e.code === 'declined' ? 'Save cancelled.' : 'This view could not save the file' + (e && e.code ? ' (' + e.code + ').' : '.')); }
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const need = () => { if (!L) { toast('Type a verse first.'); return false; } return true; };
+$('exSvg').onclick = () => need() && save(baseName() + '.svg', new Blob([makeSVG()], { type: 'image/svg+xml' }));
+$('exPng').onclick = async () => { if (need()) save(baseName() + '-' + O.dpi + 'dpi.png', await makePNG()); };
+$('exStl').onclick = () => need() && save(baseName() + '-' + O.style + '.stl', new Blob([makeSTL()], { type: 'model/stl' }), true);
+
+/* ---------------- Wiring ---------------- */
+let tmr = 0;
+const later = () => { clearTimeout(tmr); tmr = setTimeout(update, 120); };
+document.querySelectorAll('input, select, textarea').forEach(el => el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', later));
+window.addEventListener('resize', () => { draw2d(); resize3d(); });
+if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { draw2d(); if (!$('view3d').hidden) build3d(); });
+new MutationObserver(() => { draw2d(); if (!$('view3d').hidden) build3d(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+update();
+</script>
