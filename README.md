@@ -9,9 +9,9 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 The letters were chosen square by square with the owner, starting from a reference plate of إن مع العسر يسرا (a 17 × 17 grid). `letter-sheet.png` shows every letter in every form.
 
 - **Grid:** every stroke and every gap is one square.
-- **Heights:** short letters stand two squares above the baseline; ا ل ك ط are full-height stems; ف ق and م are boxes raised on a stem; ه is a short box with an ear.
+- **Heights:** ا ل ك ط are full-height stems. ب ت ث ن ي (teeth and bowls), س ش, م and ع rise to the alef's height in their line; their teeth and stems lengthen while the ع head and the م box keep their size, and they stop one square under a dot or hamza above them. Other short letters stand two squares above the baseline; ف ق are boxes raised on a stem; ه is a short box with an ear.
 - **Shapes:** ع / غ a small C opening right; ك a tall stem with its bar reaching right; ص a wide loop with a tooth; final ب ت ث a tooth plus a long tail; final ل a stretching bowl; د a small hook that stretches.
-- **Tails:** ر drops and sweeps left; و drops its tail; final ي returns right under the line; final ع runs right under the line.
+- **Tails:** ر drops and sweeps left; و drops its tail; final ي returns right under the line; final ع runs right under the line. In the bottom line tails stay inside the line, so it never gets extra rows for them.
 - **Dots:** every dot is drawn, one square, right above or below its letter with a one-square gap (inside the bowl for ن); three dots in a row.
 - **Hamza:** one square with a notch, as in the plate, always directly above or below its letter: under إ (the alef stops short), above أ and آ (the alef starts lower), above ؤ ئ. It is drawn notched in the preview, SVG, PNG and STL.
 - **Lines:** each line is only as tall as its letters need, one gap row apart. Lines interlock as in the plate: dots below and tails drop into free space in the line underneath, and a line only gets rows of its own when a dot finds no room. The square is chosen so the lines fill it exactly, with no stretched letters. Alef and lam that open a line rise to the top edge, and alef/lam heads bend over the short letters beside them.

@@ -267,6 +267,11 @@ const RAW = {
   hamza: '##/#./##'
 };
 const TALL = new Set(['alef', 'lamM', 'lamF', 'kaf', 'ta']);
+// ب ت ث ن ي (teeth and bowls), س ش, م and ع rise to the alef's height in their line, so no letter
+// stands short beside it; a head, mouth or loop never stretches, only a stem or tooth lengthens
+const GROW = new Set(['tooth', 'baF', 'nunF', 'sinM', 'sinF', 'mim', 'aynM', 'aynF']);
+const BIG = { aynM: '###/#../###/#../###', aynF: '..###/..#../..###/..#../#####' };
+const SR = { aynM: 3, aynF: 3, mim: 3 };
 // stems whose head may bend over the short letters beside it (the roof over يسرا)
 const ARMS = { alef: { c: 0, L: 1, R: 1 }, lamM: { c: 0, L: 1, R: 1 }, ta: { c: 0, L: 1, R: 1 } };
 // tails, bowls and the د take part of the kashida, so the line ends flush
@@ -288,7 +293,9 @@ for (const k in RAW) {
   const at = H => cache[H] || (cache[H] = (() => {
     if (H === h) return body;
     if (H < h) return body.filter(([r]) => r >= h - H).map(([r, c]) => [r - (h - H), c]);
-    const rs = rows.slice(0, sr).concat(Array(H - h + 1).fill(rows[sr]), rows.slice(sr + 1)), out = [];
+    const big = BIG[k] && H >= BIG[k].split('/').length ? BIG[k].split('/') : rows;
+    const srow = k in SR ? SR[k] : sr;
+    const rs = big.slice(0, srow).concat(Array(H - big.length + 1).fill(big[srow]), big.slice(srow + 1)), out = [];
     rs.forEach((r, ri) => [...r].forEach((c, ci) => { if (c === '#') out.push([ri, ci]); }));
     return out;
   })());
@@ -395,7 +402,8 @@ function lineTokens(words, o, rise) {
   if (rise) for (const t of toks) { if (t.t === 'g' && !(t.g.w === 1 && t.g.arm && (!t.mk || t.mk === 'hb'))) break; t.lead = true; }
   return toks;
 }
-function lineShape(words, o, rise) {
+// the bottom line keeps its tails inside the line (no rows of its own for them)
+function lineShape(words, o, rise, bottom) {
   let top = 0, zone = 0;
   for (const t of lineTokens(words, o, rise)) {
     if (t.t !== 'g') continue;
@@ -405,8 +413,8 @@ function lineShape(words, o, rise) {
     if (t.d && t.d.a && k !== 'nunF') top = Math.max(top, (k === 'faM' || k === 'faF') ? 4 : 2);
     if (t.mk === 'ha') top = Math.max(top, 2);
     if (t.mk === 'md') top = Math.max(top, 2);
-    if (t.g.tail || (t.d && t.d.b)) zone = Math.max(zone, 2);
-    if (k === 'yaF' && t.d && t.d.b) zone = Math.max(zone, 4);
+    if ((t.g.tail && !bottom) || (t.d && t.d.b)) zone = Math.max(zone, 2);
+    if (k === 'yaF' && t.d && t.d.b && !bottom) zone = Math.max(zone, 4);
   }
   return { top, zone };
 }
@@ -492,6 +500,20 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
     }
     for (const [a, b] of cells) g[b * Lb + a] = p.id;
   }
+  for (const p of placed) {
+    if (!GROW.has(p.gl.k)) continue;
+    const ext = p.w - p.gl.w;
+    for (const H of [Hb, Hb - 2]) {
+      if (H <= p.H) continue;
+      let ok = true;
+      for (let v = 1 + Hb - H - (H < Hb ? 1 : 0); v <= Hb - p.H && ok; v++) for (let c = p.x - 1; c <= p.x + p.w && ok; c++) if (c >= 0 && c < Lb && g[v * Lb + c]) ok = false;
+      if (!ok) continue;
+      draw(p.gl, p.x, p.H, 0, ext);
+      draw(p.gl, p.x, H, p.id, ext);
+      p.H = H;
+      break;
+    }
+  }
   if (o.arms && shape.top) addArms(g, Lb, stems, x0);
   return { g, risers, rows: rowsN, Hb, below };
 }
@@ -562,7 +584,7 @@ function placeDots(g, Lb, Hb, rowsN, placed, x0, defer) {
     const topRow = 1 + Hb - p.H;
     let v;
     if (d.a) v = k === 'nunF' ? topRow : p.gl.tall ? 1 : topRow - 2;
-    else v = k === 'yaF' ? Hb + 4 : Hb + 2;
+    else v = k === 'yaF' && rowsN >= Hb + 5 ? Hb + 4 : Hb + 2;
     const u0 = Math.round(cx - (n - 1));
     if (d.b && defer) { defer.push({ u0, n, ya: k === 'yaF' }); continue; }
     let best = null;
@@ -618,7 +640,7 @@ function stackFit(words, ww, n, o, S) {
       // lines interlock: what hangs under a line drops into free space in the line beneath it;
       // only when a dot (or و / final ي tail) finds no room does the line get rows of its own
       let band;
-      if (k === 0) band = renderBand(ws, R, o, false, rise, need);
+      if (k === 0) band = renderBand(ws, R, o, false, rise, lineShape(ws, o, rise, true));
       else {
         band = renderBand(ws, R, o, false, rise, { top: need.top, zone: 0, defer: true });
         band.R = R;
@@ -717,7 +739,9 @@ function layoutStacked(words, ww, o) {
         if (!st) continue;
         if (!sMin) sMin = S;
         found++;
-        const L = build(st), score = 3 * voidCells(L.grid, L.T) + 2 * (S - sMin);
+        // a dot row under the bottom line is a last resort
+        const low = st.rows[0].rows > st.rows[0].Hb + 1 ? 40 : 0;
+        const L = build(st), score = 3 * voidCells(L.grid, L.T) + 2 * (S - sMin) + low;
         if (!best || score < best.score) best = { L, score };
       }
     }
