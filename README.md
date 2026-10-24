@@ -6,15 +6,18 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 
 ## What it does
 
-- **Grid lettering:** every stroke and every gap is exactly one cell.
-- **Cleans the text:** harakat, Quranic annotation marks and verse numbers are removed automatically.
-- **Flush edges:** every line is stretched with kashida (joins, bowls and tails) until it touches both sides of the square.
-- **Rising stems:** alef and lam at the start of a lower line rise to the top edge.
-- **Right to left, looking left:** every letter is built from its correct initial, medial or final form, and anything that extends points left, the direction of writing. Alef and lam heads bend left over the short letters after them, and ر / ز drop below the baseline into free space. ع / غ and ك face right, as in classic plates: the ع head is a small C opening right that never stretches; only the stem under it grows.
-- **Even one-cell gaps:** lines sit one cell apart, and letters stretch upward through their stems until they are one cell under the line above; heads, mouths and loops keep their size.
-- **Every dot is drawn:** dots are single square cells. Dots above sit on the top row of the line; dots below sit in the free row under their line, one gap away, and that spot is kept clear in the line beneath. Joins around dotted letters widen so dots never touch a neighbour.
-- **Hamza:** drawn as a small mark shaped like the head of ع: under the alef for إ, beside the top of أ, ؤ and ئ, and a bar over آ.
-- **No filler:** only the letters themselves are drawn; no strokes are added to fill space.
+The letters and line rules are copied from a reference plate of إن مع العسر يسرا (a 17 × 17 grid), which the generator reproduces square for square when that verse is set bottom to top.
+
+- **Grid:** every stroke and every gap is one square.
+- **Letter heights:** short letters (teeth, the ع head, م, the ن bowl) stand two squares above the baseline; alef, lam, ك, ط, ه and و stand five rows.
+- **Line heights:** each line is only as tall as its letters need. A roof row is added only when the line has a tall letter or a dot or hamza above; a row under the baseline only for dots or hamza below. Lines sit one square apart, and spare rows make some lines one or two squares taller so the lines fill the square exactly.
+- **Rising stems:** alef and lam that open a line rise to the top edge; the lines above step in beside them.
+- **Roof:** alef/lam heads bend over the short letters beside them, leaving a one-square gap.
+- **Kashida:** joins and the tails and bowls of letters (the wide ن, the long ع tail) stretch so every line is flush on both sides.
+- **ر and ع:** ر is one stroke through the baseline and drops two squares below it; the tail of a final ع drops and runs back right under the line.
+- **ع / غ and ك:** they face right; the ع head is a small C opening right and never stretches.
+- **Dots:** every dot is drawn, at most one square from its letter: above on the roof row, inside the bowl for ن, under the baseline for dots below.
+- **Hamza:** one square under the alef for إ, a small mark beside the top for أ ؤ ئ, a bar for آ.
 - **Hand editing:** "Edit squares" lets you click or drag on the plate to add or remove squares, with undo and reset. Every export uses the edited plate.
 
 ### Arrangements
