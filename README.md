@@ -6,18 +6,17 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 
 ## What it does
 
-The letters and line rules are copied from a reference plate of إن مع العسر يسرا (a 17 × 17 grid), which the generator reproduces square for square when that verse is set bottom to top.
+The letters were chosen square by square with the owner, starting from a reference plate of إن مع العسر يسرا (a 17 × 17 grid). `letter-sheet.png` shows every letter in every form.
 
 - **Grid:** every stroke and every gap is one square.
-- **Letter heights:** short letters (teeth, the ع head, م, the ن bowl) stand two squares above the baseline; alef, lam, ك, ط, ه and و stand five rows.
-- **Line heights:** each line is only as tall as its letters need. A roof row is added only when the line has a tall letter or a dot or hamza above; a row under the baseline only for dots or hamza below. Lines sit one square apart, and spare rows make some lines one or two squares taller so the lines fill the square exactly.
-- **Rising stems:** alef and lam that open a line rise to the top edge; the lines above step in beside them.
-- **Roof:** alef/lam heads bend over the short letters beside them, leaving a one-square gap.
-- **Kashida:** joins and the tails and bowls of letters (the wide ن, the long ع tail) stretch so every line is flush on both sides.
-- **ر and ع:** ر is one stroke through the baseline and drops two squares below it; the tail of a final ع drops and runs back right under the line.
-- **ع / غ and ك:** they face right; the ع head is a small C opening right and never stretches.
-- **Dots:** every dot is drawn, at most one square from its letter: above on the roof row, inside the bowl for ن, under the baseline for dots below.
-- **Hamza:** one square under the alef for إ, a small mark beside the top for أ ؤ ئ, a bar for آ.
+- **Heights:** short letters stand two squares above the baseline; ا ل ك ط are full-height stems; ف ق are boxes raised on a stem; ه is a short box with an ear.
+- **Shapes:** ع / غ a small C opening right; ك a tall stem with its bar reaching right; ص a wide loop with a tooth; final ب ت ث a tooth plus a long tail; final ل a stretching bowl; د a small hook that stretches.
+- **Tails, inside their own line:** ر drops and sweeps left; و drops its tail; final ي returns right under the line; final ع runs right under the line.
+- **Dots:** every dot is drawn, one square, right above or below its letter with a one-square gap (inside the bowl for ن); three dots in a row.
+- **Hamza:** a notched square: in the bottom corner under إ (the alef stops short), above ؤ ئ, beside أ; a bar for آ.
+- **Lines:** each line is only as tall as its letters need, one square apart; the square is chosen so the lines fill it exactly, with no stretched letters. Alef and lam that open a line rise to the top edge, and alef/lam heads bend over the short letters beside them.
+- **Kashida:** joins, tails and bowls stretch so every line is flush on both sides.
+- **Reading order:** top to bottom or bottom to top, or let the tool pick whichever fills the square better.
 - **Hand editing:** "Edit squares" lets you click or drag on the plate to add or remove squares, with undo and reset. Every export uses the edited plate.
 
 ### Arrangements
