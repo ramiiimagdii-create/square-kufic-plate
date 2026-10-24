@@ -239,7 +239,7 @@ const RAW = {
   yaF:   '#../#../###/..#/###',
   haM:   '###/..#/..#/..#/###',
   haF:   '..###/....#/....#/#...#/#####',
-  dal:   '###/#../#../#../###',
+  dal:   '###/..#/###',
   ra:    '#./#./##',
   sinM:  '#.#.#/#.#.#/#.#.#/#.#.#/#####',
   sinF:  '#.#.#.#/#.#.#.#/#.#.#.#/#.#.#.#/#######',
@@ -258,6 +258,8 @@ const RAW = {
 // stems whose head may bend sideways over short neighbours: c = column, L/R = directions allowed
 const ARMS = { alef: { c: 0, L: 1, R: 1 }, lamM: { c: 0, L: 1, R: 1 }, lamF: { c: 2, R: 1 }, ta: { c: 0, L: 1, R: 1 } };
 // open bowls and tails may widen; closed loops (ه م و ف) keep their shape
+// letters the guide keeps short (د ذ): they widen but never grow taller
+const NO_GROW = new Set(['dal']);
 const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'kafF', 'yaF', 'dal']);
 const KEEP_HEAD = { aynM: 2, aynF: 2, faM: 3, faF: 3, waw: 3 };
 const GL = {};
@@ -398,7 +400,10 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
   if (o.arms) addArms(g, Lb, stems, x0);
   if (o.dots) placeDots(g, Lb, bh, placed, x0);
   // short letters grow upward: to the full band height, or up to the gap under a bent stem
+  const desc = [];
   for (const [px, gl, , H0, ext, w] of placed) {
+    if (gl.k === 'ra') desc.push(px);
+    if (NO_GROW.has(gl.k)) continue;
     for (const H of [Hb, Hb - 2]) {
       if (H <= H0) continue;
       let free = true;
@@ -409,7 +414,7 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
       break;
     }
   }
-  return { g, risers };
+  return { g, risers, desc };
 }
 
 // Dots are single cells with a clear ring of empty cells all round. Each one goes to the
@@ -479,8 +484,8 @@ function stackFit(words, ww, n, o, bh = BH) {
       if (last && i < N) return 'long';
       slack += (R - w) * (R - w);
       if (o.fromTop) grp.reverse();
-      const { g: local, risers } = renderBand(grp.map(j => words[j]), R, o, false, o.rise && !last, bh);
-      rows.push({ local, R, k, risers });
+      const { g: local, risers, desc } = renderBand(grp.map(j => words[j]), R, o, false, o.rise && !last, bh);
+      rows.push({ local, R, k, risers, desc });
       if (risers.length) R = Math.min(...risers) - 1;
       if (R < 3 && !last) return 'long';
     }
@@ -501,6 +506,28 @@ function placeStack(st, ox, oy, T, grid) {
     const y0 = st.S - st.bh * (row.k + 1);
     for (let v = 1; v < st.bh; v++) for (let u = 0; u < row.R; u++) if (row.local[v * row.R + u]) grid[(oy + y0 + v) * T + ox + u] = 1;
     for (const c of row.risers) for (let y = 0; y <= y0; y++) grid[(oy + y) * T + ox + c] = 1;
+  }
+  // ر and ز drop below the baseline into free space under them, as written by hand;
+  // where nothing below is free they keep their upright form
+  const at = (x, y) => x < ox || y < oy || x >= ox + st.S || y >= oy + st.S ? 0 : grid[y * T + x];
+  for (const row of st.rows) {
+    const y0 = st.S - st.bh * (row.k + 1), yb = oy + y0 + st.bh - 1;
+    for (const u of row.desc || []) {
+      const x = ox + u;
+      let len = 0;
+      for (let L = 4; L >= 2 && !len; L--) {
+        let ok = yb + L + 1 <= oy + st.S - 1;
+        for (let y = yb + 1; y <= yb + L + 1 && ok; y++) for (let dx = -1; dx <= 1 && ok; dx++) {
+          if (y === yb + 1 && dx !== 0) continue;   // beside the first cell sits the baseline itself
+          if (at(x + dx, y)) ok = false;
+        }
+        if (ok) len = L;
+      }
+      if (!len) continue;
+      for (let y = yb - 1; y >= oy + y0 + 2; y--) grid[y * T + x] = 0;
+      if (!at(x - 1, oy + y0 + 1) && !at(x + 1, oy + y0 + 1)) grid[(oy + y0 + 1) * T + x] = 0;
+      for (let y = yb + 1; y <= yb + len; y++) grid[y * T + x] = 1;
+    }
   }
 }
 
