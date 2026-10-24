@@ -246,7 +246,7 @@ const RAW = {
   faM:   '###/#.#/###/..#/###',            // box raised on a stem
   faF:   '..###/..#.#/..###/....#/#####',
   heh:   '#../###/#.#/###',                // short box with an ear
-  mim:   '###/#.#/###/#../###',            // box raised on a short stem
+  mim:   '###/#.#/###',                    // a box sitting on the baseline
   // short letters: three rows
   tooth: '#/#/#',
   baF:   '#...#/#...#/#####',              // tooth plus a long tail
@@ -268,9 +268,9 @@ const RAW = {
 };
 const TALL = new Set(['alef', 'lamM', 'lamF', 'kaf', 'ta']);
 // A line too short for the square is lifted: every letter in it grows by the same number of rows.
-// Stems, teeth and strokes lengthen; the ع head, the و ة boxes, ر and ء keep their size.
-const LIFT = new Set(['tooth', 'baF', 'nunF', 'yaF', 'sinM', 'sinF', 'sadM', 'sadF', 'mim', 'faM', 'faF', 'heh', 'haM', 'haF', 'dal']);
-const SR = { mim: 3, faM: 3, faF: 3 };              // the row that repeats: the stem under the box
+// Stems, teeth and strokes lengthen; the ع head, the م و ة boxes, ر and ء keep their size.
+const LIFT = new Set(['tooth', 'baF', 'nunF', 'yaF', 'sinM', 'sinF', 'sadM', 'sadF', 'faM', 'faF', 'heh', 'haM', 'haF', 'dal']);
+const SR = { faM: 3, faF: 3 };                    // the row that repeats: the stem under the box
 const PRE = { sadM: '#.....', sadF: '#.#.....' };    // ص ض: the teeth rise above the loop
 // stems whose head may bend over the short letters beside it (the roof over يسرا)
 const ARMS = { alef: { c: 0, L: 1, R: 1 }, lamM: { c: 0, L: 1, R: 1 }, ta: { c: 0, L: 1, R: 1 } };
@@ -408,7 +408,7 @@ function lineShape(words, o, rise, bottom) {
     if (t.t !== 'g') continue;
     const k = t.g.k;
     if (t.g.tall && !t.lead) top = Math.max(top, 2);
-    if (k === 'faM' || k === 'faF' || k === 'heh' || k === 'mim') top = Math.max(top, 2);
+    if (k === 'faM' || k === 'faF' || k === 'heh') top = Math.max(top, 2);
     if (t.d && t.d.a && k !== 'nunF') top = Math.max(top, (k === 'faM' || k === 'faF') ? 4 : 2);
     if (t.mk === 'ha') top = Math.max(top, 2);
     if (t.mk === 'md') top = Math.max(top, 2);
@@ -692,7 +692,43 @@ function placeStack(st, ox, oy, T, grid) {
 }
 
 /* ---------------- Compositions ---------------- */
+// Compositions copied square for square from reference pictures; the text picks them up as is.
+const PRESETS = {
+  'وفي السماء رزقكم وما توعدون': [
+    '#.#########.###########.###',
+    '#...........#.......#.#.#.#',
+    '#.###.#.#.#.#.#####.###.#.#',
+    '#.#...#.#.#.#.#...#...#.#.#',
+    '#.###.#.#.#.#.#.###.###.###',
+    '#.....#.#.#.#.#.......#...#',
+    '#############.#########.###',
+    '..#.#......................',
+    '#.###.###.#######.#.#.#.#.#',
+    '#.....#.#.#...............#',
+    '#.###.#.#.#######.###.#.#.#',
+    '#.#.#.#.#.......#.#.#...#.#',
+    '#####.###.#######.###.###.#',
+    '........#.#.#.#.#...#.....#',
+    '#########.#.###.#####.#####',
+    '...........................',
+    '#.#.#.###.###.###.###.###.#',
+    '#.#.#.#.#.#.#.#.#.#.#.#.#..',
+    '#.#.#.#...#.#.#.#.#.#.#.#.#',
+    '#.#.#.#.#.#.#.#.#.#.#.#.#..',
+    '#.#.#.#...###.#.#.#.#.#####',
+    '#.#.#.#.#...#...#.#.....#.#',
+    '#.#.#.###.###.#######.###.#'
+  ]
+};
+function layoutPreset(rows, o) {
+  const h = rows.length, w = rows[0].length, S = Math.max(w, h);
+  const { F, T, grid } = frameUp(S, o), ox = F + Math.floor((S - w) / 2), oy = F + Math.floor((S - h) / 2);
+  rows.forEach((r, y) => [...r].forEach((c, x) => { if (c === '#') grid[(oy + y) * T + ox + x] = 1; }));
+  return { grid, T, S, n: 'picture', unit: 'reference', preset: true };
+}
+
 function layout(text, o) {
+  if (o.layout === 'stacked' && PRESETS[text]) return layoutPreset(PRESETS[text], o);
   const words = text.split(' ').filter(Boolean).map(wordTokens);
   if (!words.length) return null;
   const ww = words.map(w => w.reduce((s, t) => s + tokW(t), 0));
