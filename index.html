@@ -262,7 +262,7 @@ const RAW = {
   sadF:  '#.#.####/#.#.#..#/########',
   aynM:  '###/#../###',                    // small C opening right (the plate's العسر)
   aynF:  '..###/..#../#####',              // its tail drops and runs right under the line
-  waw:   '###/#.#/###',                    // its tail drops below on the left
+  waw:   '###/#.#/###',                    // its tail drops from the right side, like a 9
   tehM:  '###/#.#/###',                    // ة: the small box, its dots above
   hamza: '##/#./##'
 };
@@ -476,9 +476,9 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
   // to drop into free space in the line underneath, as the ر of العسر does in the plate
   const below = [];
   placeDots(g, Lb, Hb, rowsN, placed, x0, shape.defer ? below : null);
-  // tails under the baseline: ر sweeps left, و drops, final ي returns right, final ع runs right
+  // tails under the baseline: ر sweeps left, و drops from its right side, final ي returns right, final ع runs right
   for (const p of placed) {
-    const kind = p.gl.tail, u = p.x, y1 = Hb + 1, y2 = Hb + 2;
+    const kind = p.gl.tail, u = kind === 'drop' ? p.x + p.w - 1 : p.x, y1 = Hb + 1, y2 = Hb + 2;
     if (!kind) continue;
     if (shape.defer) { below.push({ tail: kind, u, w: p.w, id: p.id }); continue; }
     const cells = [[u, y1], [u, y2]];
@@ -492,7 +492,7 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
     }
     for (const [a, b] of cells) g[b * Lb + a] = p.id;
   }
-  if (o.arms && shape.top) addArms(g, Lb, stems, x0);
+  if (o.arms && shape.top) addArms(g, Lb, stems, x0, Hb);
   return { g, risers, rows: rowsN, Hb, below };
 }
 // with no room under the line: ر stands up from the baseline, the final ع turns its tail up
@@ -579,7 +579,10 @@ function placeDots(g, Lb, Hb, rowsN, placed, x0, defer) {
 // Bend the heads of alef/lam/ط over runs of short letters beside them, leaving a one-square gap
 // (the roof over يسرا). Each head bends one way: over the following letters if it can,
 // otherwise back over the preceding ones.
-function addArms(g, Lb, stems, x0) {
+// A head never roofs over a stretched join: no bend when more than four columns side by side
+// under it are empty down to the baseline, as that would box in an empty hole.
+function addArms(g, Lb, stems, x0, Hb) {
+  const bare = c => { for (let v = 1; v < Hb; v++) if (g[v * Lb + c]) return false; return true; };
   const low = c => !g[Lb + c] && !g[2 * Lb + c], used = new Set();
   let c = x0;
   while (c < Lb) {
@@ -589,6 +592,8 @@ function addArms(g, Lb, stems, x0) {
     let p = -1, q = -2, id = 1;
     if (R && R.L) { p = a === x0 ? a : a + 1; q = b; used.add(b + 1); id = R.id; }
     else if (Lf && Lf.R && !used.has(a - 1)) { p = a; q = b === Lb - 1 ? b : b - 1; used.add(a - 1); id = Lf.id; }
+    let run = 0, nb = 0; for (let k = p; k <= q; k++) { run = bare(k) ? run + 1 : 0; nb = Math.max(nb, run); }
+    if (nb > 4) continue;
     for (let k = p; k <= q; k++) g[Lb + k] = id;
   }
 }
@@ -601,8 +606,9 @@ function stackFit(words, ww, n, o, S) {
   const N = ww.length;
   if (N < n || Math.max(...ww) > S) return null;
   const seq = o.fromTop ? ww.map((_, i) => N - 1 - i) : ww.map((_, i) => i);
-  const attempt = f => {
-    let R = S, i = 0, slack = 0, top = S + 1; const rows = [];
+  // pads: extra rows on top of a line, so its stems stand taller and the lines fill the square
+  const attempt = (f, pads) => {
+    let R = S, i = 0, slack = 0, top = S + 1; const rows = [], tall = [];
     for (let k = 0; k < n; k++) {
       const last = k === n - 1, cap = last ? R : Math.floor(f * R);
       let w = 0; const grp = [];
@@ -615,6 +621,8 @@ function stackFit(words, ww, n, o, S) {
       slack += (R - w) * (R - w);
       if (o.fromTop) grp.reverse();
       const ws = grp.map(j => words[j]), rise = o.rise && !last, need = lineShape(ws, o, rise);
+      tall.push(ws.some(w => w.some(t => t.t === 'g' && t.g.tall)));
+      if (pads[k]) need.top += pads[k];
       // lines interlock: what hangs under a line drops into free space in the line beneath it;
       // only when a dot (or و / final ي tail) finds no room does the line get rows of its own
       let band;
@@ -625,18 +633,30 @@ function stackFit(words, ww, n, o, S) {
         if (band.below.length && !placeBelow(band, rows[k - 1])) band = renderBand(ws, R, o, false, rise, need);
       }
       top -= band.rows;
-      if (top < 0) return 'tall';
+      if (top < 0) return { left: -1 };
       rows.push(Object.assign(band, { local: band.g, R, k, y0: top - 1 }));
       if (band.risers.length) R = Math.min(...band.risers) - 1;
       if (R < 3 && !last) return 'long';
     }
-    if (top !== 0) return 'tall';
+    if (top !== 0) return { left: top, tall };
     rows.slack = slack;
     return rows;
   };
+  // rows left over are shared out as taller stems among the lines that have one, at most 4 each
+  const fit = f => {
+    const pads = Array(n).fill(0);
+    for (let tries = 0; tries < 8; tries++) {
+      const r = attempt(f, pads);
+      if (typeof r === 'string' || Array.isArray(r) || r.left < 0) return r;
+      const ok = r.tall.map((t, k) => t && pads[k] < 4 ? k : -1).filter(k => k >= 0);
+      if (!ok.length) return r;
+      for (let a = 0; a < r.left; a++) { const k = ok[a % ok.length]; if (pads[k] < 4) pads[k]++; }
+    }
+    return null;
+  };
   let best = null;
   for (let f = 1; f >= 0.2; f -= 0.02) {
-    const r = attempt(f);
+    const r = fit(f);
     if (Array.isArray(r) && (!best || r.slack < best.slack)) best = r;
   }
   return best ? { rows: best, S, n } : null;
