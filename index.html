@@ -246,6 +246,7 @@ const RAW = {
   faM:   '###/#.#/###/..#/###',            // box raised on a stem
   faF:   '..###/..#.#/..###/....#/#####',
   heh:   '#../###/#.#/###',                // short box with an ear
+  mim:   '###/#.#/###/#../###',            // box raised on a short stem
   // short letters: three rows
   tooth: '#/#/#',
   baF:   '#...#/#...#/#####',              // tooth plus a long tail
@@ -261,8 +262,8 @@ const RAW = {
   sadF:  '#.#.####/#.#.#..#/########',
   aynM:  '###/#../###',                    // small C opening right (the plate's العسر)
   aynF:  '..###/..#../#####',              // its tail drops and runs right under the line
-  mim:   '###/#.#/###',
   waw:   '###/#.#/###',                    // its tail drops below on the left
+  tehM:  '###/#.#/###',                    // ة: the small box, its dots above
   hamza: '##/#./##'
 };
 const TALL = new Set(['alef', 'lamM', 'lamF', 'kaf', 'ta']);
@@ -338,7 +339,7 @@ def('كکگ', { m: 'kaf', f: 'kaf' });
 def('ل', { m: 'lamM', f: 'lamF' });
 def('م', { m: 'mim', f: 'mim' });
 def('ه', { m: 'heh', f: 'heh' });
-def('ة', { f: 'mim', d: { a: 2 } });
+def('ة', { f: 'tehM', d: { a: 2 } });
 def('و', { f: 'waw' });
 def('ؤ', { f: 'waw', mk: 'ha' });
 def('ء', { f: 'hamza' });
@@ -365,9 +366,9 @@ function wordTokens(word) {
   ls.forEach((L, i) => {
     const last = i === ls.length - 1;
     const t = { t: 'g', g: GL[L.j && !last ? L.m : L.f], d: L.d, mk: L.mk };
-    const markL = t.mk === 'ha' ? (t.g.tall ? 2 : 0) : t.mk === 'md' ? 3 : 0;
+    const markL = 0;
     t.rL = Math.max(dotReach(t), markL);
-    t.rR = Math.max(dotReach(t), t.g.k === 'kaf' ? 2 : 0);
+    t.rR = dotReach(t);
     toks.push(t);
     if (!last) toks.push({ t: L.j ? 'j' : 's' });
   });
@@ -377,7 +378,8 @@ function wordTokens(word) {
   return toks;
 }
 const tokW = t => t.t === 'g' ? t.g.w : t.min || 1;
-const wordGapBetween = (a, b, g) => Math.max(g, 1 + a.reachL + b.reachF);
+// the gap between two words is always the word gap setting (one square)
+const wordGapBetween = (a, b, g) => g;
 const share = (i, k, tot) => Math.floor((i + 1) * tot / k) - Math.floor(i * tot / k);
 
 /* ---------------- One line of text ----------------
@@ -399,7 +401,7 @@ function lineShape(words, o, rise) {
     if (t.t !== 'g') continue;
     const k = t.g.k;
     if (t.g.tall && !t.lead) top = Math.max(top, 2);
-    if (k === 'faM' || k === 'faF' || k === 'heh') top = Math.max(top, 2);
+    if (k === 'faM' || k === 'faF' || k === 'heh' || k === 'mim') top = Math.max(top, 2);
     if (t.d && t.d.a && k !== 'nunF') top = Math.max(top, (k === 'faM' || k === 'faF') ? 4 : 2);
     if (t.mk === 'ha') top = Math.max(top, 2);
     if (t.mk === 'md') top = Math.max(top, 2);
@@ -448,7 +450,11 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
       x -= w;
       const H = t.g.tall ? Hb : t.g.h, id = ++GID;
       draw(t.g, x, H, id, ext);
-      if (t.g.k === 'kaf') { g[1 * Lb + x + 1] = id; g[1 * Lb + x + 2] = id; }   // ك: its bar reaches right
+      if (t.g.k === 'kaf') for (let c = 1; c <= 2; c++) {   // ك: its bar reaches right while there is room
+        const u = x + c;
+        if (u + 1 >= Lb || g[Lb + u] || g[2 * Lb + u] || g[Lb + u + 1] || g[2 * Lb + u + 1]) break;
+        g[Lb + u] = id;
+      }
       placed.push({ x, gl: t.g, d: t.d, mk: t.mk, H, w, id });
       if (t.lead) risers.push(x);
       else if (t.g.arm && !t.mk) stems[x + t.g.arm.c] = Object.assign({ id }, t.g.arm);
@@ -462,8 +468,9 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
   const mark = (u, v) => { if (u >= 0 && u < Lb && v >= 1 && v < rowsN) g[v * Lb + u] = 1 | LOCK | HAMZA; };
   for (const p of placed) {
     if (p.mk === 'hb') { g[(Hb - 1) * Lb + p.x] = 0; g[Hb * Lb + p.x] = 0; mark(p.x, Hb); }
-    else if (p.mk === 'ha') p.gl.tall ? mark(p.x - 2, 1) : mark(p.x + Math.floor((p.w - 1) / 2), 1 + Hb - p.H - 2);
-    else if (p.mk === 'md') for (const u of [p.x - 3, p.x - 2]) if (u >= 0) g[Lb + u] = 1 | LOCK;
+    else if (p.mk === 'ha' && p.gl.tall) { g[Lb + p.x] = 0; g[2 * Lb + p.x] = 0; mark(p.x, 1); }   // أ: above, the alef starts lower
+    else if (p.mk === 'ha') mark(p.x + Math.floor((p.w - 1) / 2), 1 + Hb - p.H - 2);
+    else if (p.mk === 'md') { g[Lb + p.x] = 0; g[2 * Lb + p.x] = 0; mark(p.x, 1); }   // آ: the same place
   }
   // with `defer`, what hangs under the baseline (dots below, tails) is handed back in `below`
   // to drop into free space in the line underneath, as the ر of العسر does in the plate
