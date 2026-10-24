@@ -10,10 +10,10 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 - **Cleans the text:** harakat, Quranic annotation marks and verse numbers are removed automatically.
 - **Flush edges:** every line is stretched with kashida (joins, bowls and tails) until it touches both sides of the square.
 - **Rising stems:** alef and lam at the start of a lower line rise to the top edge.
-- **Filled space:** short letters grow to fill the line, alef/lam bend over short neighbours, and ر / ز drop below the baseline into free space.
+- **Right to left, looking left:** every letter is built from its correct initial, medial or final form, and anything that extends points left, the direction of writing. Alef and lam heads bend left over the short letters after them, ك opens to the left, and ر / ز drop below the baseline into free space.
+- **Taller letters:** short letters stretch upward through their stems only; heads, mouths and loops keep their size.
 - **Dots:** single square cells, placed only where they have clear space around them.
-- **Even gaps:** following the guide's one-unit rule, free stroke ends grow (straight, or bending at most twice for alef/lam) until every stroke is one cell from its neighbour. Teeth only grow straight, the ع / غ cup and dots never grow, and the line breaks are chosen to leave the least empty space.
-- **No filler:** only written words appear, never decoration.
+- **No filler:** only the letters themselves are drawn; no strokes are added to fill space.
 
 ### Arrangements
 

@@ -178,7 +178,6 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
         <label class="check" id="riseField"><input id="rise" type="checkbox" checked> Carry alef and lam up to the top edge</label>
         <label class="check"><input id="arms" type="checkbox" checked> Bend alef and lam over short letters</label>
         <label class="check"><input id="dots" type="checkbox" checked> Letter dots, where there is room</label>
-        <label class="check"><input id="fill" type="checkbox" checked> Even one-cell gaps (extend strokes into empty space)</label>
         <p class="warn" id="shortWarn" hidden>This text is too short to fill a square with whole lines. Try Four-fold, or add words.</p>
       </div>
 
@@ -231,8 +230,8 @@ const RAW = {
   alef:  '#/#/#/#/#/#/#',
   lamM:  '#/#/#/#/#/#/#',
   lamF:  '..#/..#/#.#/#.#/#.#/#.#/###',
-  kafM:  '###/#../#../#../#../#../###',
-  kafF:  '####/#.../#.../#.#./#.#./#.../####',
+  kafM:  '###/..#/..#/..#/..#/..#/###',
+  kafF:  '####/...#/...#/.#.#/.#.#/...#/####',
   ta:    '#..../#..../#.###/#.#.#/#.#.#/#.#.#/#####',
   tooth: '#/#/#/#/#',
   baF:   '#../#../#../#../###',
@@ -256,20 +255,17 @@ const RAW = {
   waw:   '###/#.#/###/#../###',
   hamza: '##/#./##'
 };
-// stems whose head may bend sideways over short neighbours: c = column, L/R = directions allowed
-const ARMS = { alef: { c: 0, L: 1, R: 1 }, lamM: { c: 0, L: 1, R: 1 }, lamF: { c: 2, R: 1 }, ta: { c: 0, L: 1, R: 1 } };
+// stems whose head may bend over the short letters after them; Arabic runs right to left, so heads bend left only
+const ARMS = { alef: { c: 0, L: 1 }, lamM: { c: 0, L: 1 }, ta: { c: 0, L: 1 } };
 // open bowls and tails may widen; closed loops (ه م و ف) keep their shape
 // letters the guide keeps short (د ذ): they widen but never grow taller
 const NO_GROW = new Set(['dal']);
 const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'kafF', 'yaF', 'dal']);
-// cell flag: the fill pass never grows from these (the ع / غ cup, dots)
+// cell flag kept on the ع / غ cup and on dots
 const LOCK = 1 << 30;
 const LOCK_HEAD = { aynM: 2, aynF: 2 };
 let GID = 1;
-const KIND = {};   // letter id → glyph key
-const STEMS = new Set(['alef', 'lamM', 'lamF', 'ta', 'kafM', 'kafF']);
-// teeth must stay straight or they stop reading as ب ت ن ي س
-const TEETH = new Set(['tooth', 'sinM', 'sinF', 'nunF', 'sadM', 'sadF', 'baF']);
+
 const KEEP_HEAD = { aynM: 2, aynF: 2, faM: 3, faF: 3, waw: 3 };
 const GL = {};
 for (const k in RAW) {
@@ -399,7 +395,6 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
       x -= w;
       t.H = t.g.tall ? Hb : t.g.h;
       const id = ++GID;
-      KIND[id] = t.g.k;
       draw(t.g, x, t.H, id, ext);
       placed.push([x, t.g, t.d, t.H, ext, w, id]);
       if (t.lead) risers.push(x);
@@ -457,18 +452,17 @@ function placeDots(g, Lb, bh, placed, x0) {
   }
 }
 
-// Bend the heads of alef/lam/ta over runs of short letters, leaving a one-cell gap.
+// Bend the heads of alef/lam/ta leftward over the short letters that follow, leaving a one-cell gap.
 function addArms(g, Lb, stems, x0) {
   const low = c => !g[Lb + c] && !g[2 * Lb + c], used = new Set();
   let c = x0;
   while (c < Lb) {
     if (!low(c)) { c++; continue; }
     const a = c; while (c < Lb && low(c)) c++;
-    const b = c - 1, R = stems[b + 1], Lf = stems[a - 1];
+    const b = c - 1, R = stems[b + 1];
     let p = -1, q = -2;
     let id = 1;
     if (R && R.L) { p = a === x0 ? a : a + 1; q = b; used.add(b + 1); id = R.id; }
-    else if (Lf && Lf.R && !used.has(a - 1)) { p = a; q = b === Lb - 1 ? b : b - 1; used.add(a - 1); id = Lf.id; }
     for (let k = p; k <= q; k++) g[Lb + k] = id;
   }
 }
@@ -551,7 +545,6 @@ function layout(text, o) {
   const ww = words.map(w => w.reduce((s, t) => s + tokW(t), 0));
   const L = o.layout === 'stacked' ? layoutStacked(words, ww, o)
           : layoutRings(words, ww, o) || Object.assign(layoutStacked(words, ww, o), { fallback: true });
-  if (o.fill && o.layout !== 'stacked') fillGaps(L.grid, L.T);
   return L;
 }
 
@@ -570,80 +563,6 @@ function voidCells(grid, T) {
   return n;
 }
 
-/* Even gaps: any two strokes stand exactly one cell apart, whether they belong to
-   the same letter or not. Free stroke ends keep growing, straight on or turning a
-   corner, until one more cell would bring them closer than one cell to another
-   stroke. A stroke never turns back into its own letter (bowls stay open), and the
-   ع / غ cup and the dots never grow. */
-function fillGaps(grid, T) {
-  const get = (x, y) => x < 0 || y < 0 || x >= T || y >= T ? 0 : grid[y * T + x];
-  const idOf = v => v & ~LOCK;
-  // only alef, lam, ط and ك (and the rising stems) may bend or branch; teeth and bowls only grow straight
-  const isStem = id => id === 1 || STEMS.has(KIND[id]);
-  // a growing stroke may bend at most twice (stem → roof → hook), so it never spirals
-  const turns = new Uint8Array(T * T);
-  const clear = (nx, ny, skip) => {
-    if (nx < 0 || ny < 0 || nx >= T || ny >= T || grid[ny * T + nx]) return false;
-    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dy) continue;
-      const x = nx + dx, y = ny + dy;
-      if (skip.some(([sx, sy]) => sx === x && sy === y)) continue;
-      if (get(x, y)) return false;
-    }
-    return true;
-  };
-  const intoOwn = (nx, ny, tx, ty, id) => {
-    let k = 1, hit = 0;
-    while (!hit && k < T) { hit = get(nx + tx * k, ny + ty * k); k++; }
-    return hit && id > 1 && idOf(hit) === id;
-  };
-  const extend = () => {
-    for (let round = 0, changed = true; changed && round < 4 * T; round++) {
-      changed = false;
-      for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-        const v = grid[y * T + x];
-        if (!v || (v & LOCK)) continue;
-        const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => get(x + dx, y + dy));
-        if (nb.length !== 1) continue;
-        const [ddx, ddy] = [-nb[0][0], -nb[0][1]], px = x + nb[0][0], py = y + nb[0][1];
-        if (grid[py * T + px] & LOCK) continue;
-        const id = idOf(v);
-        let n = null;
-        let bent = 0;
-        if (clear(x + ddx, y + ddy, [[x, y]])) n = [x + ddx, y + ddy];
-        else if (turns[y * T + x] < (ddy === 0 || isStem(id) ? 2 : TEETH.has(KIND[id]) ? 0 : 1)) for (const [tx, ty] of [[ddy, ddx], [-ddy, -ddx]]) {
-          const nx = x + tx, ny = y + ty;
-          if (!clear(nx, ny, [[x, y], [px, py]]) || intoOwn(nx, ny, tx, ty, id)) continue;
-          n = [nx, ny]; bent = 1; break;
-        }
-        if (n) { grid[n[1] * T + n[0]] = id; turns[n[1] * T + n[0]] = turns[y * T + x] + bent; changed = true; }
-      }
-    }
-  };
-  // a pocket with no free stroke end inside gets a branch from a stem beside it
-  const branch = () => {
-    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
-      const v = grid[y * T + x];
-      if (!v || (v & LOCK) || TEETH.has(KIND[idOf(v)])) continue;
-      const vert = get(x, y - 1) && get(x, y + 1) && !get(x - 1, y) && !get(x + 1, y);
-      // only vertical strokes branch, sideways: a spur hanging off a bar would read as an extra tooth
-      if (!vert) continue;
-      const sides = [[1, 0], [-1, 0]];
-      for (const [tx, ty] of sides) {
-        const nx = x + tx, ny = y + ty;
-        const skip = [[x, y], [x, y - 1], [x, y + 1]];
-        // worth it only if the branch can run at least two cells
-        if (!clear(nx, ny, skip) || !clear(nx + tx, ny + ty, [[nx, ny]]) || intoOwn(nx, ny, tx, ty, idOf(v))) continue;
-        grid[ny * T + nx] = idOf(v);
-        turns[ny * T + nx] = 1;
-        return true;
-      }
-    }
-    return false;
-  };
-  extend();
-  for (let i = 0; i < T * T && branch(); i++) extend();
-}
 
 function frameUp(S, o) {
   const F = o.frame ? 2 : 0, T = S + 2 * F, grid = new Int32Array(T * T);
@@ -664,7 +583,6 @@ function layoutStacked(words, ww, o) {
   const build = st => {
     const { F, T, grid } = frameUp(st.S, o);
     placeStack(st, F, F, T, grid);
-    if (o.fill) fillGaps(grid, T);
     return { grid, T, S: st.S, n: st.n, unit: 'lines' };
   };
   let best = null, sMin = 0, tried = 0;
@@ -799,7 +717,7 @@ function readOpts() {
     plate: Math.max(10, num('plate', 195)), margin: Math.max(0, num('margin', 6)),
     frame: $('frame').checked, layout: $('layout').value, diamond: $('orient').value === 'diamond',
     lines: parseInt($('lines').value, 10) || 0, justify: $('justify').value,
-    wordGap: Math.max(1, Math.round(num('wordGap', 1))), arms: $('arms').checked, dots: $('dots').checked, fill: $('fill').checked,
+    wordGap: Math.max(1, Math.round(num('wordGap', 1))), arms: $('arms').checked, dots: $('dots').checked,
     rise: $('rise').checked, fromTop: $('start').value === 'top',
     style: $('style').value, thick: Math.max(0.2, num('thick', 5)), relief: Math.max(0.1, num('relief', 2)),
     dpi: parseInt($('dpi').value, 10), svgPlate: $('svgPlate').value === '1'
