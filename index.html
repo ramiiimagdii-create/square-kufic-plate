@@ -186,7 +186,8 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
             <select id="start"><option value="best">Whichever fits best</option><option value="top">At the top</option><option value="bottom">At the bottom</option></select></div>
           <div class="field"><label for="wordGap">Word gap (cells)</label><input id="wordGap" type="number" min="1" max="6" step="1" value="1"></div>
         </div>
-        <label class="check" id="riseField"><input id="rise" type="checkbox"> Carry alef and lam up to the top edge</label>
+        <label class="check" id="riseField"><input id="rise" type="checkbox" checked> Carry alef and lam up to the top edge</label>
+        <label class="check"><input id="arms" type="checkbox" checked> Bend alef and lam over short letters</label>
         <p class="warn" id="shortWarn" hidden>This text is too short to fill a square with whole lines. Try Four-fold, or add words.</p>
       </div>
 
@@ -231,8 +232,8 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
 "use strict";
 /* ---------------- Glyphs ----------------
    The letter set chosen square by square with the owner, after the reference plate (إن مع العسر
-   يسرا, a 17 × 17 grid). Every stroke and every gap is one square. Every letter is drawn
-   BODY (5) rows tall from the baseline, tall stems included; only ر and ء keep their size.
+   يسرا, a 17 × 17 grid). Every stroke and every gap is one square. Short letters stand two
+   squares above the baseline (three rows with it); tall stems five rows or more.
    Rows top→bottom, '#' stroke, '.' empty. */
 const RAW = {
   // tall stems: drawn the full height of their line
@@ -266,15 +267,8 @@ const RAW = {
   hamza: '##/#./##'
 };
 const TALL = new Set(['alef', 'lamM', 'lamF', 'kaf', 'ta']);
-// every letter stands BODY squares tall, alef and lam included, so nothing sticks up out of a
-// line; short letters reach it by lengthening a stem or tooth, never by stretching a head or mouth
-const BODY = 5;
-const SMALL = new Set(['ra', 'hamza']);   // ر and the standalone ء keep their own size
-const BIG = {
-  aynM: '###/#../###/#../###', aynF: '..###/..#../..###/..#../#####',
-  haF: '..###/....#/....#/#...#/#####', waw: '###/#.#/###/#../###', heh: '#../###/#.#/#.#/###'
-};
-const SR = { aynM: 3, aynF: 3, mim: 3, waw: 3, haF: 1, heh: 2 };
+// stems whose head may bend over the short letters beside it (the roof over يسرا)
+const ARMS = { alef: { c: 0, L: 1, R: 1 }, lamM: { c: 0, L: 1, R: 1 }, ta: { c: 0, L: 1, R: 1 } };
 // tails, bowls and the د take part of the kashida, so the line ends flush
 const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'sadM', 'yaF', 'dal']);
 // what hangs under the baseline, drawn inside the letter's own line
@@ -294,9 +288,7 @@ for (const k in RAW) {
   const at = H => cache[H] || (cache[H] = (() => {
     if (H === h) return body;
     if (H < h) return body.filter(([r]) => r >= h - H).map(([r, c]) => [r - (h - H), c]);
-    const big = BIG[k] && H >= BIG[k].split('/').length ? BIG[k].split('/') : rows;
-    const srow = k in SR ? SR[k] : sr;
-    const rs = big.slice(0, srow).concat(Array(H - big.length + 1).fill(big[srow]), big.slice(srow + 1)), out = [];
+    const rs = rows.slice(0, sr).concat(Array(H - h + 1).fill(rows[sr]), rows.slice(sr + 1)), out = [];
     rs.forEach((r, ri) => [...r].forEach((c, ci) => { if (c === '#') out.push([ri, ci]); }));
     return out;
   })());
@@ -307,7 +299,7 @@ for (const k in RAW) {
     for (let c = 1; c < w - 1 && sc < 0; c++) if (rows.every(r => r[c] !== '#' || (r[c - 1] === '#' && r[c + 1] === '#'))) sc = c;
     if (sc < 0 && k === 'dal') sc = 0;
   }
-  GL[k] = { k, w, h, tall: TALL.has(k), at, sc, tail: TAILS[k] };
+  GL[k] = { k, w, h, tall: TALL.has(k), at, sc, arm: ARMS[k], tail: TAILS[k] };
 }
 
 /* ---------------- Letters ----------------
@@ -393,34 +385,34 @@ const share = (i, k, tot) => Math.floor((i + 1) * tot / k) - Math.floor(i * tot 
 /* ---------------- One line of text ----------------
    A line is only as tall as its letters need:
      row 0          gap above the line
-     top rows       0 or 2: room for dots and hamza above
-     5 rows         the letters' body, the last one the baseline
+     top rows       0, 2 or 4: room for tall stems, the raised ف ق, the ه ear, dots and hamza above
+     3 rows         the letters' body, the last one the baseline
      zone rows      0, 2 or 4: tails and dots below, and the hamza under إ
    With `rise`, the alef/lam that open the line are handed back to be carried to the top edge. */
 function lineTokens(words, o, rise) {
   const toks = [];
   words.forEach((w, i) => { if (i) toks.push({ t: 'w', min: wordGapBetween(words[i - 1], w, o.wordGap) }); for (const t of w) toks.push(Object.assign({}, t)); });
-  if (rise) for (const t of toks) { if (t.t === 'g' && !(t.g.w === 1 && t.g.tall && t.g.k !== 'kaf' && (!t.mk || t.mk === 'hb'))) break; t.lead = true; }
+  if (rise) for (const t of toks) { if (t.t === 'g' && !(t.g.w === 1 && t.g.arm && (!t.mk || t.mk === 'hb'))) break; t.lead = true; }
   return toks;
 }
-// the bottom line keeps its tails inside the line (no rows of its own for them)
-function lineShape(words, o, rise, bottom) {
+function lineShape(words, o, rise) {
   let top = 0, zone = 0;
   for (const t of lineTokens(words, o, rise)) {
     if (t.t !== 'g') continue;
     const k = t.g.k;
-    // the only rows above the letters are for dots and hamza
-    if (t.d && t.d.a && k !== 'nunF') top = Math.max(top, 2);
+    if (t.g.tall && !t.lead) top = Math.max(top, 2);
+    if (k === 'faM' || k === 'faF' || k === 'heh' || k === 'mim') top = Math.max(top, 2);
+    if (t.d && t.d.a && k !== 'nunF') top = Math.max(top, (k === 'faM' || k === 'faF') ? 4 : 2);
     if (t.mk === 'ha') top = Math.max(top, 2);
     if (t.mk === 'md') top = Math.max(top, 2);
-    if ((t.g.tail && !bottom) || (t.d && t.d.b)) zone = Math.max(zone, 2);
-    if (k === 'yaF' && t.d && t.d.b && !bottom) zone = Math.max(zone, 4);
+    if (t.g.tail || (t.d && t.d.b)) zone = Math.max(zone, 2);
+    if (k === 'yaF' && t.d && t.d.b) zone = Math.max(zone, 4);
   }
   return { top, zone };
 }
 function renderBand(words, Lb, o, reserve, rise, shape) {
-  const Hb = shape.top + BODY, rowsN = Hb + 1 + shape.zone;
-  const g = new Int32Array(Lb * rowsN), risers = [];
+  const Hb = shape.top + 3, rowsN = Hb + 1 + shape.zone;
+  const g = new Int32Array(Lb * rowsN), stems = {}, risers = [];
   const free = (u, v) => u >= 0 && u < Lb && v >= 0 && v < rowsN && !g[v * Lb + u];
   const ring = (u, v, skip) => {   // u, v and its eight neighbours empty, apart from `skip`
     if (!free(u, v) || u < (reserve ? 1 : 0) || v < 1) return false;
@@ -456,26 +448,29 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
     if (t.t === 'g') {
       const ext = t.len, w = t.g.w + ext;
       x -= w;
-      const H = t.lead ? Hb : SMALL.has(t.g.k) ? t.g.h : BODY, id = ++GID;
+      const H = t.g.tall ? Hb : t.g.h, id = ++GID;
       draw(t.g, x, H, id, ext);
-      if (t.g.k === 'kaf') for (let c = 1, v = 1 + Hb - H; c <= 2; c++) {   // ك: its bar reaches right while there is room
+      if (t.g.k === 'kaf') for (let c = 1; c <= 2; c++) {   // ك: its bar reaches right while there is room
         const u = x + c;
-        if (u + 1 >= Lb || g[v * Lb + u] || g[(v + 1) * Lb + u] || g[v * Lb + u + 1] || g[(v + 1) * Lb + u + 1] || (v > 1 && (g[(v - 1) * Lb + u] || g[(v - 1) * Lb + u + 1]))) break;
-        g[v * Lb + u] = id;
+        if (u + 1 >= Lb || g[Lb + u] || g[2 * Lb + u] || g[Lb + u + 1] || g[2 * Lb + u + 1]) break;
+        g[Lb + u] = id;
       }
       placed.push({ x, gl: t.g, d: t.d, mk: t.mk, H, w, id });
       if (t.lead) risers.push(x);
+      else if (t.g.arm && !t.mk) stems[x + t.g.arm.c] = Object.assign({ id }, t.g.arm);
     } else {
       x -= t.len;
       if (t.t === 'j') for (let c = 0; c < t.len; c++) g[Hb * Lb + x + c] = 1;
     }
   }
   // hamza: one square with a notch, as in the plate: in the bottom corner under إ (the alef stops
-  // short), one gap above أ آ ؤ ئ in the row over the letters
+  // short), beside the top of أ, above ؤ ئ; a short bar beside آ
   const mark = (u, v) => { if (u >= 0 && u < Lb && v >= 1 && v < rowsN) g[v * Lb + u] = 1 | LOCK | HAMZA; };
   for (const p of placed) {
     if (p.mk === 'hb') { g[(Hb - 1) * Lb + p.x] = 0; g[Hb * Lb + p.x] = 0; mark(p.x, Hb); }
-    else if (p.mk === 'ha' || p.mk === 'md') mark(p.x + Math.floor((p.w - 1) / 2), 1 + Hb - p.H - 2);
+    else if (p.mk === 'ha' && p.gl.tall) { g[Lb + p.x] = 0; g[2 * Lb + p.x] = 0; mark(p.x, 1); }   // أ: above, the alef starts lower
+    else if (p.mk === 'ha') mark(p.x + Math.floor((p.w - 1) / 2), 1 + Hb - p.H - 2);
+    else if (p.mk === 'md') { g[Lb + p.x] = 0; g[2 * Lb + p.x] = 0; mark(p.x, 1); }   // آ: the same place
   }
   // with `defer`, what hangs under the baseline (dots below, tails) is handed back in `below`
   // to drop into free space in the line underneath, as the ر of العسر does in the plate
@@ -497,6 +492,7 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
     }
     for (const [a, b] of cells) g[b * Lb + a] = p.id;
   }
+  if (o.arms && shape.top) addArms(g, Lb, stems, x0);
   return { g, risers, rows: rowsN, Hb, below };
 }
 // with no room under the line: ر stands up from the baseline, the final ع turns its tail up
@@ -565,8 +561,8 @@ function placeDots(g, Lb, Hb, rowsN, placed, x0, defer) {
     const n = d.a || d.b, cx = p.x + (p.w - 1) / 2, k = p.gl.k;
     const topRow = 1 + Hb - p.H;
     let v;
-    if (d.a) v = k === 'nunF' ? topRow + 1 : topRow - 2;
-    else v = k === 'yaF' && rowsN >= Hb + 5 ? Hb + 4 : Hb + 2;
+    if (d.a) v = k === 'nunF' ? topRow : p.gl.tall ? 1 : topRow - 2;
+    else v = k === 'yaF' ? Hb + 4 : Hb + 2;
     const u0 = Math.round(cx - (n - 1));
     if (d.b && defer) { defer.push({ u0, n, ya: k === 'yaF' }); continue; }
     let best = null;
@@ -577,6 +573,23 @@ function placeDots(g, Lb, Hb, rowsN, placed, x0, defer) {
     }
     if (best === null) best = Math.min(Math.max(u0, x0), Lb - 2 * n + 1);
     if (v >= 1 && v < rowsN) for (let i = 0; i < n; i++) g[v * Lb + best + 2 * i] = 1 | LOCK;
+  }
+}
+
+// Bend the heads of alef/lam/ط over runs of short letters beside them, leaving a one-square gap
+// (the roof over يسرا). Each head bends one way: over the following letters if it can,
+// otherwise back over the preceding ones.
+function addArms(g, Lb, stems, x0) {
+  const low = c => !g[Lb + c] && !g[2 * Lb + c], used = new Set();
+  let c = x0;
+  while (c < Lb) {
+    if (!low(c)) { c++; continue; }
+    const a = c; while (c < Lb && low(c)) c++;
+    const b = c - 1, R = stems[b + 1], Lf = stems[a - 1];
+    let p = -1, q = -2, id = 1;
+    if (R && R.L) { p = a === x0 ? a : a + 1; q = b; used.add(b + 1); id = R.id; }
+    else if (Lf && Lf.R && !used.has(a - 1)) { p = a; q = b === Lb - 1 ? b : b - 1; used.add(a - 1); id = Lf.id; }
+    for (let k = p; k <= q; k++) g[Lb + k] = id;
   }
 }
 
@@ -605,7 +618,7 @@ function stackFit(words, ww, n, o, S) {
       // lines interlock: what hangs under a line drops into free space in the line beneath it;
       // only when a dot (or و / final ي tail) finds no room does the line get rows of its own
       let band;
-      if (k === 0) band = renderBand(ws, R, o, false, rise, lineShape(ws, o, rise, true));
+      if (k === 0) band = renderBand(ws, R, o, false, rise, need);
       else {
         band = renderBand(ws, R, o, false, rise, { top: need.top, zone: 0, defer: true });
         band.R = R;
@@ -630,8 +643,8 @@ function stackFit(words, ww, n, o, S) {
 }
 function stackOfSize(words, ww, c, o) {
   for (const fromTop of [o.fromTop, !o.fromTop]) for (let n = 1; n <= ww.length; n++) {
-    if ((BODY + 1) * n - 1 > c) break;
-    const oo = Object.assign({}, o, { fromTop, rise: !!o.rise });
+    if (4 * n - 1 > c) break;
+    const oo = Object.assign({}, o, { fromTop, rise: true });
     const st = stackFit(words, ww, n, oo, c) || stackFit(words, ww, n, Object.assign({}, oo, { rise: false }), c);
     if (st) return st;
   }
@@ -683,8 +696,8 @@ function layoutStacked(words, ww, o) {
   const cands = [];
   for (let n = 1; n <= N; n++) {
     if (o.lines > 0 && n !== Math.min(o.lines, N)) continue;
-    const lo = Math.max((BODY + 1) * n - 1, Math.max(...ww), Math.ceil(total / n));
-    for (let S = lo; S <= 15 * n; S++) cands.push([S, n]);
+    const lo = Math.max(4 * n - 1, Math.max(...ww), Math.ceil(total / n));
+    for (let S = lo; S <= 13 * n; S++) cands.push([S, n]);
   }
   cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const build = st => {
@@ -704,9 +717,7 @@ function layoutStacked(words, ww, o) {
         if (!st) continue;
         if (!sMin) sMin = S;
         found++;
-        // a dot row under the bottom line is a last resort
-        const low = st.rows[0].rows > st.rows[0].Hb + 1 ? 40 : 0;
-        const L = build(st), score = 3 * voidCells(L.grid, L.T) + 2 * (S - sMin) + low;
+        const L = build(st), score = 3 * voidCells(L.grid, L.T) + 2 * (S - sMin);
         if (!best || score < best.score) best = { L, score };
       }
     }
@@ -715,7 +726,7 @@ function layoutStacked(words, ww, o) {
   if (best) return best.L;
   // too short to fill a square: one line, centred
   const shape = lineShape(words, o, false);
-  const S = Math.max(total, shape.top + BODY + 1 + shape.zone);
+  const S = Math.max(total, shape.top + 4 + shape.zone);
   const { F, T, grid } = frameUp(S, o);
   const band = renderBand(words, S, o, false, false, shape), y0 = Math.floor((S - band.rows) / 2);
   for (let v = 1; v < band.rows; v++) for (let u = 0; u < S; u++) if (band.g[v * S + u] && y0 + v >= 0 && y0 + v < S) grid[(F + y0 + v) * T + F + u] = band.g[v * S + u];
@@ -744,7 +755,7 @@ function bandToGrid(local, b, th, F, T, grid) {
 }
 
 function layoutRings(words, ww, o) {
-  const N = ww.length, shape = lineShape(words, o, false), th = shape.top + BODY + 1 + shape.zone;
+  const N = ww.length, shape = lineShape(words, o, false), th = shape.top + 4 + shape.zone;
   const lineW = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += ww[i] + (i > a ? wordGapBetween(words[i - 1], words[i], o.wordGap) : 0); return s; };
   const build = (S, plan, assign, centre) => {
     const { F, T, grid } = frameUp(S, o);
@@ -834,7 +845,7 @@ function readOpts() {
     plate: Math.max(10, num('plate', 195)), margin: Math.max(0, num('margin', 6)),
     frame: $('frame').checked, layout: $('layout').value, diamond: $('orient').value === 'diamond',
     lines: parseInt($('lines').value, 10) || 0, justify: $('justify').value,
-    wordGap: Math.max(1, Math.round(num('wordGap', 1))),
+    wordGap: Math.max(1, Math.round(num('wordGap', 1))), arms: $('arms').checked,
     rise: $('rise').checked, order: $('start').value, fromTop: $('start').value !== 'bottom',
     style: $('style').value, thick: Math.max(0.2, num('thick', 5)), relief: Math.max(0.1, num('relief', 2)),
     dpi: parseInt($('dpi').value, 10), svgPlate: $('svgPlate').value === '1'
@@ -869,7 +880,7 @@ function update() {
   $('linesField').hidden = $('startField').hidden = $('riseField').hidden = O.layout !== 'stacked';
   L = layout(text, O);
   // hand edits survive anything that does not change the layout itself (size, thickness, export)
-  const key = JSON.stringify([text, O.frame, O.layout, O.diamond, O.lines, O.justify, O.wordGap, O.rise, O.order]);
+  const key = JSON.stringify([text, O.frame, O.layout, O.diamond, O.lines, O.justify, O.wordGap, O.arms, O.rise, O.order]);
   if (key !== EDIT.key) { EDIT.key = key; EDIT.map = new Map(); EDIT.undo = []; }
   if (L) for (const [i, v] of EDIT.map) L.grid[i] = v;
   syncEditButtons();
