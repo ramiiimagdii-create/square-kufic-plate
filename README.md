@@ -13,7 +13,9 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 - **Right to left, looking left:** every letter is built from its correct initial, medial or final form, and anything that extends points left, the direction of writing. Alef and lam heads bend left over the short letters after them, and ر / ز drop below the baseline into free space. ع / غ and ك face right, as in classic plates: the ع head is a small C opening right that never stretches; only the stem under it grows.
 - **Even one-cell gaps:** lines sit one cell apart, and letters stretch upward through their stems until they are one cell under the line above; heads, mouths and loops keep their size.
 - **Every dot is drawn:** dots are single square cells. Dots above sit on the top row of the line; dots below sit in the free row under their line, one gap away, and that spot is kept clear in the line beneath. Joins around dotted letters widen so dots never touch a neighbour.
+- **Hamza:** drawn as a small mark shaped like the head of ع: under the alef for إ, beside the top of أ, ؤ and ئ, and a bar over آ.
 - **No filler:** only the letters themselves are drawn; no strokes are added to fill space.
+- **Hand editing:** "Edit squares" lets you click or drag on the plate to add or remove squares, with undo and reset. Every export uses the edited plate.
 
 ### Arrangements
 

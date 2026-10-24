@@ -57,6 +57,11 @@ h1 span { color: var(--gold); font-weight: 500; }
 .tabs { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .tabs button { border: 0; background: transparent; color: var(--muted); font: 500 13px var(--font-body); padding: 6px 14px; cursor: pointer; }
 .tabs button[aria-selected="true"] { background: var(--lapis); color: var(--panel); }
+.edit-tools { display: inline-flex; gap: 6px; }
+.tool { border: 1px solid var(--line); background: transparent; color: var(--ink); font: 500 13px var(--font-body); padding: 6px 12px; border-radius: var(--r); cursor: pointer; }
+.tool[aria-pressed="true"] { background: var(--gold); border-color: var(--gold); color: var(--panel); }
+.tool:disabled { opacity: .45; cursor: default; }
+#view2d.editing { cursor: crosshair; touch-action: none; }
 .stats { font-family: var(--font-mono); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 14px; font-variant-numeric: tabular-nums; }
 .stats b { color: var(--ink); font-weight: 500; }
 .drawing { display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: 28px auto; gap: 0; max-width: 720px; width: 100%; margin: 0 auto; }
@@ -112,8 +117,14 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
           <button id="tab2d" role="tab" aria-selected="true">Drawing</button>
           <button id="tab3d" role="tab" aria-selected="false">3D model</button>
         </div>
+        <div class="edit-tools">
+          <button class="tool" id="editBtn" aria-pressed="false">Edit squares</button>
+          <button class="tool" id="undoBtn" disabled>Undo</button>
+          <button class="tool" id="resetBtn" disabled>Reset</button>
+        </div>
         <div class="stats" id="stats"></div>
       </div>
+      <p class="note" id="editNote" hidden>Click a square to add or remove it; drag to paint. Your edits are used by every export. Changing the text or the composition settings starts a fresh layout.</p>
       <div class="drawing">
         <div class="dim-top" id="dimTop">195 mm</div>
         <div class="view">
@@ -259,7 +270,7 @@ const ARMS = { alef: { c: 0, L: 1 }, lamM: { c: 0, L: 1 }, ta: { c: 0, L: 1 } };
 // open bowls and tails may widen; closed loops (ه م و ف) keep their shape
 // letters the guide keeps short (د ذ): they widen but never grow taller
 // letters that keep their drawn height (د ذ)
-const NO_GROW = new Set(['dal']);
+const NO_GROW = new Set(['dal', 'hamza']);
 const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'kafF', 'yaF', 'dal']);
 // cell flag kept on the ع / غ cup and on dots
 const LOCK = 1 << 30;
@@ -298,13 +309,18 @@ for (const k in RAW) {
    d = the letter's dots: a = above, b = below. Every dot is always drawn. */
 const CH = {};
 function def(chars, spec) { for (const c of chars) CH[c] = Object.assign({ j: !!spec.m }, spec); }
-def('اأإآٱٲٳ', { f: 'alef' });
+def('اٱٲٳ', { f: 'alef' });
+// hamza is drawn as a small mark shaped like the head of ع: beside the top of أ, under إ, a bar over آ
+def('أ', { f: 'alef', mk: 'ha' });
+def('إ', { f: 'alef', mk: 'hb' });
+def('آ', { f: 'alef', mk: 'md' });
 def('ب', { m: 'tooth', f: 'baF', d: { b: 1 } });
 def('ت', { m: 'tooth', f: 'baF', d: { a: 2 } });
 def('ث', { m: 'tooth', f: 'baF', d: { a: 3 } });
 def('ن', { m: 'tooth', f: 'nunF', d: { a: 1 } });
 def('يی', { m: 'tooth', f: 'yaF', d: { b: 2 } });
-def('ىئ', { m: 'tooth', f: 'yaF' });
+def('ى', { m: 'tooth', f: 'yaF' });
+def('ئ', { m: 'tooth', f: 'yaF', mk: 'ha' });
 def('ج', { m: 'haM', f: 'haF', d: { b: 1 } });
 def('ح', { m: 'haM', f: 'haF' });
 def('خ', { m: 'haM', f: 'haF', d: { a: 1 } });
@@ -327,7 +343,8 @@ def('ل', { m: 'lamM', f: 'lamF' });
 def('م', { m: 'mim', f: 'mim' });
 def('ه', { m: 'hehM', f: 'hehF' });
 def('ة', { f: 'hehF', d: { a: 2 } });
-def('وؤ', { f: 'waw' });
+def('و', { f: 'waw' });
+def('ؤ', { f: 'waw', mk: 'ha' });
 def('ء', { f: 'hamza' });
 
 function cleanText(t) {
@@ -346,26 +363,30 @@ function cleanText(t) {
 
 // how far a letter's dots reach past its own sides (two dots over a one-cell tooth reach one cell out)
 const dotReach = t => t.d ? Math.max(0, Math.ceil((2 * (t.d.a || t.d.b) - 1 - t.g.w) / 2)) : 0;
+// the hamza mark's reach: beside the top on the left (3 cells), under the alef (1), madda bar (1 each side)
+const MARK_L = { ha: 3, hb: 1, md: 1 }, MARK_R = { md: 1 };
 function wordTokens(word) {
   const ls = [...word].map(c => CH[c]);
   const toks = [];
   ls.forEach((L, i) => {
     const last = i === ls.length - 1;
-    toks.push({ t: 'g', g: GL[L.j && !last ? L.m : L.f], d: L.d });
+    // إ joined from the right has no room under it: its hamza goes beside the top instead
+    const mk = L.mk === 'hb' && i > 0 && ls[i - 1].j ? 'ha' : L.mk;
+    const t = { t: 'g', g: GL[L.j && !last ? L.m : L.f], d: L.d, mk };
+    t.rL = Math.max(dotReach(t), MARK_L[mk] || 0);
+    t.rR = Math.max(dotReach(t), MARK_R[mk] || 0);
+    toks.push(t);
     if (!last) toks.push({ t: L.j ? 'j' : 's' });
   });
-  // a join or gap next to a dotted letter is long enough that the dots never touch the neighbour
-  toks.forEach((t, i) => {
-    if (t.t === 'g') return;
-    t.min = 1 + 2 * Math.max(dotReach(toks[i - 1]), dotReach(toks[i + 1]));
-  });
-  toks.reachF = dotReach(toks[0]);
-  toks.reachL = dotReach(toks[toks.length - 1]);
+  // a join or gap beside a dotted or hamza letter is long enough that nothing touches the neighbour
+  toks.forEach((t, i) => { if (t.t !== 'g') t.min = 1 + toks[i - 1].rL + toks[i + 1].rR; });
+  toks.reachF = toks[0].rR;
+  toks.reachL = toks[toks.length - 1].rL;
   return toks;
 }
 const tokW = t => t.t === 'g' ? t.g.w : t.min || 1;
 // the gap between two neighbouring words, wide enough for the dots at their edges
-const wordGapBetween = (a, b, g) => Math.max(g, 1 + 2 * Math.max(a.reachL, b.reachF));
+const wordGapBetween = (a, b, g) => Math.max(g, 1 + a.reachL + b.reachF);
 const hasBelowDots = words => words.some(w => w.some(t => t.t === 'g' && t.d && t.d.b));
 
 /* ---------------- One band of text ----------------
@@ -404,7 +425,7 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH, zone = o.zb || 0, book
   let x = Lb;
   if (slots.length) slots.forEach((t, i) => t.len += share(i, slots.length, extra));
   else x -= extra;   // nothing can stretch: keep the left edge flush
-  const placed = [];
+  const placed = [], marks = [];
   for (const t of toks) {
     if (t.t === 'g') {
       const ext = t.len, w = t.g.w + ext;
@@ -413,11 +434,26 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH, zone = o.zb || 0, book
       const id = ++GID;
       draw(t.g, x, t.H, id, ext);
       placed.push([x, t.g, t.d, t.H, ext, w, id]);
+      if (t.mk) marks.push([x, t.mk, t.g]);
       if (t.lead) risers.push(x);
-      else if (t.g.arm) stems[x + t.g.arm.c + (t.g.sc >= 0 && t.g.arm.c > t.g.sc ? ext : 0)] = Object.assign({ id }, t.g.arm);
+      else if (t.g.arm && !t.mk) stems[x + t.g.arm.c + (t.g.sc >= 0 && t.g.arm.c > t.g.sc ? ext : 0)] = Object.assign({ id }, t.g.arm);
     } else {
       x -= t.len;
       if (t.t === 'j') for (let c = 0; c < t.len; c++) g[Hb * Lb + x + c] = 1;
+    }
+  }
+  // hamza: the small mark of the photo's إ, shaped like the head of ع ('##' / '#.' / '##')
+  const put = (u, v) => { if (u >= 0 && u < Lb && v >= 1 && v < rowsN) g[v * Lb + u] = 1 | LOCK; };
+  for (const [px, mk, gl] of marks) {
+    if (mk === 'hb') {   // under the alef: the alef stops short and the mark sits on the baseline row
+      for (let v = Hb - 3; v <= Hb; v++) g[v * Lb + px] = 0;
+      put(px - 1, Hb - 2); put(px, Hb - 2); put(px - 1, Hb - 1); put(px - 1, Hb); put(px, Hb);
+    } else if (mk === 'md') {   // madda: a bar over the alef, which starts two rows lower
+      for (let v = 1; v <= 2; v++) g[v * Lb + px] = 0;
+      put(px - 1, 1); put(px, 1); put(px + 1, 1);
+    } else {   // beside the top of the letter, on its left
+      const u = px - 3;
+      put(u, 1); put(u + 1, 1); put(u, 2); put(u, 3); put(u + 1, 3);
     }
   }
   // spots booked by the dots of the line above stay empty while the letters are shaped
@@ -469,13 +505,13 @@ function placeDots(g, Lb, bh, rowsN, placed, x0, below) {
     const u0 = Math.round(cx - (n - 1));
     if (d.b && below) { below.push({ u: u0, n }); continue; }
     let best = null;
-    for (const du of [0, -1, 1, -2, 2, -3, 3]) {
+    for (const du of [0, -1, 1]) {
       const u = u0 + du;
       let ok = true;
       for (let i = 0; i < n && ok; i++) ok = clear(u + 2 * i, v);
       if (ok) { best = u; break; }
     }
-    if (best === null) best = Math.min(Math.max(u0, x0), Lb - 2 * n + 1);
+    if (best === null) best = Math.min(Math.max(u0, x0), Lb - 2 * n + 1);   // its own spot, no wandering
     for (let i = 0; i < n; i++) g[v * Lb + best + 2 * i] = 1 | LOCK;
   }
 }
@@ -589,7 +625,7 @@ function placeStack(st, ox, oy, T, grid) {
     for (const { u, n } of row.below) {
       const cells = s => Array.from({ length: n }, (_, i) => [ox + u + s + 2 * i, y]);
       let shift = null;
-      for (const s of [0, -1, 1, -2, 2, -3, 3]) if (cells(s).every(([x, yy]) => ring(x, yy))) { shift = s; break; }
+      for (const s of [0, -1, 1]) if (cells(s).every(([x, yy]) => ring(x, yy))) { shift = s; break; }
       if (shift === null) {
         shift = 0;
         for (const [x, yy] of cells(0)) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
@@ -686,12 +722,12 @@ function layoutStacked(words, ww, o) {
   let best = null, sMin = 0, tried = 0;
   for (const variant of o.rise ? [o, Object.assign({}, o, { rise: false })] : [o]) {
     for (const [S, n, bh, low] of cands) {
-      if (sMin && (S > sMin * 1.3 || tried >= 10)) break;
+      if (sMin && (S > sMin * 1.5 || tried >= 24)) break;
       const st = stackFit(words, ww, n, variant, bh, low);
       if (!st) continue;
       if (!sMin) sMin = S;
       tried++;
-      const L = build(st), score = voidCells(L.grid, L.T) + 4 * (S - sMin);
+      const L = build(st), score = 3 * voidCells(L.grid, L.T) + 2 * (S - sMin);
       if (!best || score < best.score) best = { L, score };
     }
     if (best) break;
@@ -859,6 +895,11 @@ function update() {
   $('layoutNote').textContent = LAYOUT_NOTES[O.layout];
   $('linesField').hidden = $('startField').hidden = $('riseField').hidden = O.layout !== 'stacked';
   L = layout(text, O);
+  // hand edits survive anything that does not change the layout itself (size, thickness, export)
+  const key = JSON.stringify([text, O.frame, O.layout, O.diamond, O.lines, O.justify, O.wordGap, O.arms, O.rise, O.fromTop]);
+  if (key !== EDIT.key) { EDIT.key = key; EDIT.map = new Map(); EDIT.undo = []; }
+  if (L) for (const [i, v] of EDIT.map) L.grid[i] = v;
+  syncEditButtons();
   $('shortWarn').hidden = !(L && (L.short || L.fallback));
   if (L) $('shortWarn').textContent = L.fallback ? `${O.layout === 'fourfold' ? 'Four-fold' : 'Spiral'} has no room for this text without filler, so it is shown Stacked. ${O.layout === 'fourfold' ? 'Four-fold needs a phrase of three or more words to fill its centre.' : 'Try a longer passage.'}`
     : 'This text is too short to fill a square with whole lines. Add words, or try Four-fold.';
@@ -929,7 +970,81 @@ function draw2d() {
   if (!L) return;
   ctx.fillStyle = css('--lapis');
   paintLetters(ctx, s / O.plate);
+  if (EDIT.on) {   // the grid, so every square can be placed by hand
+    const k = s / O.plate;
+    ctx.strokeStyle = css('--muted'); ctx.globalAlpha = 0.25; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= L.T; i++) {
+      let [a, b] = toPlate(i, 0), [c, d] = toPlate(i, L.T);
+      ctx.moveTo(a * k, b * k); ctx.lineTo(c * k, d * k);
+      [a, b] = toPlate(0, i); [c, d] = toPlate(L.T, i);
+      ctx.moveTo(a * k, b * k); ctx.lineTo(c * k, d * k);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
 }
+
+/* ---------------- Hand editing ---------------- */
+const EDIT = { on: false, key: '', map: new Map(), undo: [], stroke: null };
+function syncEditButtons() {
+  $('editBtn').setAttribute('aria-pressed', EDIT.on);
+  $('undoBtn').disabled = !EDIT.undo.length;
+  $('resetBtn').disabled = !EDIT.map.size;
+  $('editNote').hidden = !EDIT.on;
+  $('view2d').classList.toggle('editing', EDIT.on);
+}
+// canvas point → grid cell (inverse of toPlate)
+function cellAt(ev) {
+  const cv = $('view2d'), r = cv.getBoundingClientRect();
+  const mx = (ev.clientX - r.left) / r.width * O.plate, my = (ev.clientY - r.top) / r.height * O.plate;
+  const { cell } = geom();
+  let gx, gy;
+  if (!O.diamond) { gx = (mx - O.margin) / cell; gy = (my - O.margin) / cell; }
+  else {
+    const xp = mx - O.plate / 2, yp = my - O.plate / 2, k = Math.SQRT1_2;
+    gx = (xp + yp) * k / cell + L.T / 2; gy = (yp - xp) * k / cell + L.T / 2;
+  }
+  gx = Math.floor(gx); gy = Math.floor(gy);
+  return gx >= 0 && gy >= 0 && gx < L.T && gy < L.T ? gy * L.T + gx : -1;
+}
+function paintCell(i) {
+  if (i < 0 || (L.grid[i] ? 1 : 0) === EDIT.stroke.value) return;
+  EDIT.stroke.changes.push([i, L.grid[i], EDIT.map.has(i) ? EDIT.map.get(i) : undefined]);
+  L.grid[i] = EDIT.stroke.value;
+  EDIT.map.set(i, EDIT.stroke.value);
+  L.path = traceLoops(L.grid, L.T);
+  draw2d();
+}
+$('view2d').addEventListener('pointerdown', ev => {
+  if (!EDIT.on || !L) return;
+  const i = cellAt(ev);
+  if (i < 0) return;
+  $('view2d').setPointerCapture(ev.pointerId);
+  EDIT.stroke = { value: L.grid[i] ? 0 : 1, changes: [] };
+  paintCell(i);
+});
+$('view2d').addEventListener('pointermove', ev => { if (EDIT.stroke) paintCell(cellAt(ev)); });
+const endStroke = () => {
+  if (!EDIT.stroke) return;
+  if (EDIT.stroke.changes.length) EDIT.undo.push(EDIT.stroke.changes);
+  EDIT.stroke = null;
+  syncEditButtons();
+  if (!$('view3d').hidden) build3d();
+};
+$('view2d').addEventListener('pointerup', endStroke);
+$('view2d').addEventListener('pointercancel', endStroke);
+$('editBtn').onclick = () => { EDIT.on = !EDIT.on; if (EDIT.on) showTab(false); syncEditButtons(); draw2d(); };
+$('undoBtn').onclick = () => {
+  const changes = EDIT.undo.pop();
+  if (!changes) return;
+  for (const [i, old, oldMap] of changes.reverse()) {
+    L.grid[i] = old;
+    if (oldMap === undefined) EDIT.map.delete(i); else EDIT.map.set(i, oldMap);
+  }
+  L.path = traceLoops(L.grid, L.T);
+  syncEditButtons(); draw2d();
+};
+$('resetBtn').onclick = () => { EDIT.map = new Map(); EDIT.undo = []; EDIT.key = ''; update(); };
 
 function makeSVG() {
   const r = v => +v.toFixed(4);
