@@ -10,9 +10,9 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 - **Cleans the text:** harakat, Quranic annotation marks and verse numbers are removed automatically.
 - **Flush edges:** every line is stretched with kashida (joins, bowls and tails) until it touches both sides of the square.
 - **Rising stems:** alef and lam at the start of a lower line rise to the top edge.
-- **Right to left, looking left:** every letter is built from its correct initial, medial or final form, and anything that extends points left, the direction of writing. Alef and lam heads bend left over the short letters after them, ك opens to the left, and ر / ز drop below the baseline into free space.
-- **Readable heights:** letters stretch upward through their stems only; heads, mouths and loops keep their size. Teeth and the bowls of ب ت ن ي س stay two cells under alef and lam, so they never read as alef.
-- **Every dot is drawn:** dots are single square cells. Dots above sit on the top row of the line; dots below get their own row under the baseline. Joins around dotted letters widen so dots never touch a neighbour, and dots are placed before alef/lam heads bend so nothing covers them.
+- **Right to left, looking left:** every letter is built from its correct initial, medial or final form, and anything that extends points left, the direction of writing. Alef and lam heads bend left over the short letters after them, and ر / ز drop below the baseline into free space. ع / غ and ك face right, as in classic plates: the ع head is a small C opening right that never stretches; only the stem under it grows.
+- **Even one-cell gaps:** lines sit one cell apart, and letters stretch upward through their stems until they are one cell under the line above; heads, mouths and loops keep their size.
+- **Every dot is drawn:** dots are single square cells. Dots above sit on the top row of the line; dots below sit in the free row under their line, one gap away, and that spot is kept clear in the line beneath. Joins around dotted letters widen so dots never touch a neighbour.
 - **No filler:** only the letters themselves are drawn; no strokes are added to fill space.
 
 ### Arrangements

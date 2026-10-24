@@ -229,8 +229,8 @@ const RAW = {
   alef:  '#/#/#/#/#/#/#',
   lamM:  '#/#/#/#/#/#/#',
   lamF:  '..#/..#/#.#/#.#/#.#/#.#/###',
-  kafM:  '###/..#/..#/..#/..#/..#/###',
-  kafF:  '####/...#/...#/.#.#/.#.#/...#/####',
+  kafM:  '###/#../#../#../#../#../###',
+  kafF:  '####/#.../#.../#.#./#.#./#.../####',
   ta:    '#..../#..../#.###/#.#.#/#.#.#/#.#.#/#####',
   tooth: '#/#/#/#/#',
   baF:   '#../#../#../#../###',
@@ -244,8 +244,8 @@ const RAW = {
   sinF:  '#.#.#.#/#.#.#.#/#.#.#.#/#.#.#.#/#######',
   sadM:  '#.###/#.#.#/#.#.#/#.#.#/#####',
   sadF:  '#.#.###/#.#.#.#/#.#.#.#/#.#.#.#/#######',
-  aynM:  '#.#/###/..#/..#/###',
-  aynF:  '..#.#/..###/....#/#...#/#####',
+  aynM:  '###/#../###/#../###',
+  aynF:  '..###/..#../..###/#.#../#####',
   faM:   '###/#.#/###/..#/###',
   faF:   '..###/..#.#/..###/#...#/#####',
   mim:   '###/#.#/###',
@@ -258,15 +258,17 @@ const RAW = {
 const ARMS = { alef: { c: 0, L: 1 }, lamM: { c: 0, L: 1 }, ta: { c: 0, L: 1 } };
 // open bowls and tails may widen; closed loops (ه م و ف) keep their shape
 // letters the guide keeps short (د ذ): they widen but never grow taller
+// letters that keep their drawn height (د ذ)
 const NO_GROW = new Set(['dal']);
-const CAPPED = new Set(['tooth', 'sinM', 'sinF', 'nunF', 'baF', 'sadM', 'sadF', 'yaF']);
 const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'kafF', 'yaF', 'dal']);
 // cell flag kept on the ع / غ cup and on dots
 const LOCK = 1 << 30;
-const LOCK_HEAD = { aynM: 2, aynF: 2 };
+const LOCK_HEAD = { aynM: 3, aynF: 3 };
+const ARMF = 1 << 29;   // cell flag: part of a bent alef/lam head
 let GID = 1;
 
-const KEEP_HEAD = { aynM: 2, aynF: 2, faM: 3, faF: 3, waw: 3 };
+// heads that never stretch: only the stem under them grows (the ع / غ head always opens right, one cell)
+const KEEP_HEAD = { aynM: 3, aynF: 3, faM: 3, faF: 3, waw: 3 };
 const GL = {};
 for (const k in RAW) {
   const rows = RAW[k].split('/'), h = rows.length, w = rows[0].length;
@@ -372,9 +374,10 @@ const hasBelowDots = words => words.some(w => w.some(t => t.t === 'g' && t.d && 
    stays empty so the band never touches the next one at a corner. With `rise`,
    the alef/lam stems that open the band are returned so they can be carried up
    to the top edge of the square. */
-function renderBand(words, Lb, o, reserve, rise, bh = BH) {
-  // rows: 0 gap, 1..Hb letter body (Hb = baseline), then with dots below: a gap row and the dot row
-  const Hb = bh - 1, rowsN = bh + (o.zb || 0), g = new Int32Array(Lb * rowsN), stems = {}, risers = [];
+function renderBand(words, Lb, o, reserve, rise, bh = BH, zone = o.zb || 0, booked = []) {
+  // rows: 0 gap, 1..Hb letter body (Hb = baseline), then with a zone: a gap row and a dot row.
+  // Without a zone, dots below are returned in `below` and placed under the line afterwards.
+  const Hb = bh - 1, rowsN = bh + zone, g = new Int32Array(Lb * rowsN), stems = {}, risers = [], below = [];
   // a glyph drawn H rows high sits on the baseline (row Hb)
   const draw = (gl, px, H, id, ext) => {
     for (const [r, c] of gl.at(H)) {
@@ -417,17 +420,21 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
       if (t.t === 'j') for (let c = 0; c < t.len; c++) g[Hb * Lb + x + c] = 1;
     }
   }
+  // spots booked by the dots of the line above stay empty while the letters are shaped
+  const HOLD = 1 << 28;
+  for (const { u, n } of booked) for (let i = 0; i < n; i++) if (u + 2 * i >= 0 && u + 2 * i < Lb) g[Lb + u + 2 * i] = HOLD;
   // dots first, so no bent stem ever covers them
-  placeDots(g, Lb, bh, rowsN, placed, x0);
+  placeDots(g, Lb, bh, rowsN, placed, x0, zone ? null : below);
   if (o.arms) addArms(g, Lb, stems, x0);
   // short letters grow upward: to the full band height, or up to the gap under a bent stem
-  const desc = [];
+  const desc = [], sweeps = [];
   for (const [px, gl, , H0, ext, w, id] of placed) {
     if (gl.k === 'ra') desc.push(px);
+    if (gl.k === 'aynF') sweeps.push(px);
     if (NO_GROW.has(gl.k)) continue;
-    // letters grow upward into free space; teeth and their bowls stop two cells under the
-    // stems so ب ت ن ي س never read as ا, and a dot above always keeps its row
-    for (const H of CAPPED.has(gl.k) ? [Hb - 2] : [Hb, Hb - 2]) {
+    // letters grow upward to one cell under the line above (or under a bent head), so every
+    // gap is one cell; where a dot sits above, the letter stops one cell under the dot
+    for (const H of [Hb, Hb - 2]) {
       if (H <= H0) continue;
       let free = true;
       for (let v = 1 + Hb - H - (H < Hb ? 1 : 0); v <= Hb - H0 && free; v++) for (let c = px - 1; c <= px + w && free; c++) if (c >= 0 && c < Lb && g[v * Lb + c]) free = false;
@@ -437,14 +444,15 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
       break;
     }
   }
-  return { g, risers, desc, rows: rowsN };
+  for (let i = 0; i < g.length; i++) if (g[i] === HOLD) g[i] = 0;
+  return { g, risers, desc, sweeps, below, rows: rowsN };
 }
 
 // Every dot is drawn: a single cell with a clear ring of empty cells around it, above the
 // letter on the top row of the line, or below it on the dot row under the baseline. The
 // joins around dotted letters were already widened so the dots have room; if a spot is still
 // taken the dots slide sideways, and as a last resort they go on their own spot regardless.
-function placeDots(g, Lb, bh, rowsN, placed, x0) {
+function placeDots(g, Lb, bh, rowsN, placed, x0, below) {
   const clear = (u, v) => {
     if (u < x0 || u >= Lb || v < 1 || v >= rowsN || g[v * Lb + u]) return false;
     for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) {
@@ -459,6 +467,7 @@ function placeDots(g, Lb, bh, rowsN, placed, x0) {
     // dots above sit on the line's top row (ظ's lands beside its stem, over its loop)
     const v = d.a ? 1 : rowsN - 1;
     const u0 = Math.round(cx - (n - 1));
+    if (d.b && below) { below.push({ u: u0, n }); continue; }
     let best = null;
     for (const du of [0, -1, 1, -2, 2, -3, 3]) {
       const u = u0 + du;
@@ -482,7 +491,7 @@ function addArms(g, Lb, stems, x0) {
     let p = -1, q = -2;
     let id = 1;
     if (R && R.L) { p = a === x0 ? a : a + 1; q = b; used.add(b + 1); id = R.id; }
-    for (let k = p; k <= q; k++) g[Lb + k] = id;
+    for (let k = p; k <= q; k++) g[Lb + k] = id | ARMF;
   }
 }
 
@@ -495,7 +504,9 @@ const share = (i, k, tot) => Math.floor((i + 1) * tot / k) - Math.floor(i * tot 
    above step in to their left. Every line is stretched flush to both sides. */
 // Line k (counted from the bottom) is bh rows high, plus o.zb rows under its baseline for
 // dots below. The bottom line carries that dot row only when `low` is set.
-const lineHeights = (n, bh, o, low) => Array.from({ length: n }, (_, k) => bh + (k > 0 || low ? o.zb : 0));
+// Lines sit one gap row apart. Dots below a line go into the free top row of the line under
+// it, so only the bottom line ever needs a dot row of its own (when `low` is set).
+const lineHeights = (n, bh, o, low) => Array.from({ length: n }, (_, k) => bh + (k === 0 && low ? o.zb : 0));
 const stackSize = (n, bh, o, low) => lineHeights(n, bh, o, low).reduce((a, b) => a + b, 0) - 1;
 
 function stackFit(words, ww, n, o, bh = BH, low = false) {
@@ -518,11 +529,18 @@ function stackFit(words, ww, n, o, bh = BH, low = false) {
       const ws = grp.map(j => words[j]);
       // the bottom line has no dot row under it unless `low`: it may not hold dots below
       if (k === 0 && !low && o.zb && hasBelowDots(ws)) return 'bad';
-      const { g: local, risers, desc, rows: rowsN } = renderBand(ws, R, o, false, o.rise && !last, bh);
+      const args = [ws, R, o, false, o.rise && !last, bh, k === 0 && low ? o.zb : 0];
+      const { g: local, risers, desc, sweeps, below, rows: rowsN } = renderBand(...args);
       top -= hs[k];
-      rows.push({ local, R, k, risers, desc, rowsN, y0: top - 1 });
+      rows.push({ local, R, k, risers, desc, sweeps, below, rowsN, y0: top - 1, args });
       if (risers.length) R = Math.min(...risers) - 1;
       if (R < 3 && !last) return 'long';
+    }
+    // the dots under each line land in the top row of the line beneath: shape that line
+    // again with those spots kept free (its width and joins do not change)
+    for (let k = 1; k < rows.length; k++) if (rows[k].below.length) {
+      const r = rows[k - 1], again = renderBand(...r.args, rows[k].below);
+      Object.assign(r, { local: again.g, desc: again.desc, sweeps: again.sweeps, below: again.below });
     }
     rows.slack = slack;
     return rows;
@@ -554,9 +572,38 @@ function placeStack(st, ox, oy, T, grid) {
     }
     for (const c of row.risers) for (let y = 0; y <= y0; y++) grid[(oy + y) * T + ox + c] = 1;
   }
+  const at = (x, y) => x < ox || y < oy || x >= ox + st.S || y >= oy + st.S ? 0 : grid[y * T + x];
+  const set = (x, y, v) => { grid[y * T + x] = v; };
+  const ring = (x, y, skip) => {   // x, y and its 8 neighbours empty, apart from `skip`
+    if (x < ox || y < oy || x >= ox + st.S || y >= oy + st.S || at(x, y)) return false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if ((dx || dy) && !(skip && skip(x + dx, y + dy)) && at(x + dx, y + dy)) return false;
+    }
+    return true;
+  };
+  // Dots below each line go into the free row two under its baseline (the top row of the line
+  // beneath, one gap away), sliding sideways if needed. A bent alef/lam head in the way is cut
+  // back to make room. Every dot is drawn.
+  for (const row of st.rows) {
+    const y = oy + row.y0 + st.bh + 1;
+    for (const { u, n } of row.below) {
+      const cells = s => Array.from({ length: n }, (_, i) => [ox + u + s + 2 * i, y]);
+      let shift = null;
+      for (const s of [0, -1, 1, -2, 2, -3, 3]) if (cells(s).every(([x, yy]) => ring(x, yy))) { shift = s; break; }
+      if (shift === null) {
+        shift = 0;
+        for (const [x, yy] of cells(0)) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          let cx = x + dx;
+          const cy = yy + dy;
+          // remove the head from here outward, so no piece of it is left floating
+          while (at(cx, cy) & ARMF) { set(cx, cy, 0); cx--; }
+        }
+      }
+      for (const [x, yy] of cells(shift)) if (x >= ox && x < ox + st.S) set(x, yy, 1 | LOCK);
+    }
+  }
   // ر and ز drop below the baseline into free space under them, as written by hand;
   // where nothing below is free they keep their upright form
-  const at = (x, y) => x < ox || y < oy || x >= ox + st.S || y >= oy + st.S ? 0 : grid[y * T + x];
   for (const row of st.rows) {
     const y0 = row.y0, yb = oy + y0 + st.bh - 1;
     for (const u of row.desc || []) {
@@ -574,6 +621,16 @@ function placeStack(st, ox, oy, T, grid) {
       for (let y = yb - 1; y >= oy + y0 + 2; y--) grid[y * T + x] = 0;
       if (!at(x - 1, oy + y0 + 1) && !at(x + 1, oy + y0 + 1)) grid[(oy + y0 + 1) * T + x] = 0;
       for (let y = yb + 1; y <= yb + len; y++) grid[y * T + x] = 1;
+    }
+    // the tail of a final ع drops at its left end and runs back to the right under the line
+    for (const u of row.sweeps || []) {
+      const x = ox + u, path = [[x, yb + 1], [x, yb + 2]];
+      if (!ring(x, yb + 1, (a, b) => b === yb || (a === x && b === yb - 1)) || !ring(x, yb + 2, (a, b) => a === x && b === yb + 1)) continue;
+      let cx = x;
+      while (path.length < 2 + row.R && ring(cx + 1, yb + 2, (a, b) => a === cx && b === yb + 2) && !(at(cx + 2, yb + 1)) && cx + 1 < ox + row.R) { cx++; path.push([cx, yb + 2]); }
+      if (cx - x < 2) continue;
+      set(x, yb - 1, 0);   // the upturn gives way to the dropped tail
+      for (const [px, py] of path) set(px, py, 1);
     }
   }
 }
