@@ -273,6 +273,7 @@ const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sad
 // what hangs under the baseline, drawn inside the letter's own line
 const TAILS = { ra: 'sweepL', waw: 'drop', yaF: 'returnR', aynF: 'sweepR' };
 const LOCK = 1 << 30;   // cell flag: dots and hamza
+const HAMZA = 1 << 27;  // cell flag: the hamza, drawn as one square with a notch
 let GID = 1;
 const GL = {};
 for (const k in RAW) {
@@ -364,7 +365,7 @@ function wordTokens(word) {
   ls.forEach((L, i) => {
     const last = i === ls.length - 1;
     const t = { t: 'g', g: GL[L.j && !last ? L.m : L.f], d: L.d, mk: L.mk };
-    const markL = t.mk === 'ha' ? (t.g.tall ? 3 : 1) : t.mk === 'md' ? 4 : t.mk === 'hb' ? 1 : 0;
+    const markL = t.mk === 'ha' ? (t.g.tall ? 2 : 0) : t.mk === 'md' ? 3 : 0;
     t.rL = Math.max(dotReach(t), markL);
     t.rR = Math.max(dotReach(t), t.g.k === 'kaf' ? 2 : 0);
     toks.push(t);
@@ -400,7 +401,7 @@ function lineShape(words, o, rise) {
     if (t.g.tall && !t.lead) top = Math.max(top, 2);
     if (k === 'faM' || k === 'faF' || k === 'heh') top = Math.max(top, 2);
     if (t.d && t.d.a && k !== 'nunF') top = Math.max(top, (k === 'faM' || k === 'faF') ? 4 : 2);
-    if (t.mk === 'ha') top = Math.max(top, t.g.tall ? 2 : 4);
+    if (t.mk === 'ha') top = Math.max(top, 2);
     if (t.mk === 'md') top = Math.max(top, 2);
     if (t.g.tail || (t.d && t.d.b)) zone = Math.max(zone, 2);
     if (k === 'yaF' && t.d && t.d.b) zone = Math.max(zone, 4);
@@ -456,41 +457,89 @@ function renderBand(words, Lb, o, reserve, rise, shape) {
       if (t.t === 'j') for (let c = 0; c < t.len; c++) g[Hb * Lb + x + c] = 1;
     }
   }
-  // hamza: the notched square of the plate ('##' / '#.' / '##'): under إ, above ؤ ئ, beside أ
-  const mark = (u, v) => { for (const [r, c] of [[0, 0], [0, 1], [1, 0], [2, 0], [2, 1]]) if (u + c >= 0 && u + c < Lb && v + r >= 1 && v + r < rowsN) g[(v + r) * Lb + u + c] = 1 | LOCK; };
+  // hamza: one square with a notch, as in the plate: in the bottom corner under إ (the alef stops
+  // short), beside the top of أ, above ؤ ئ; a short bar beside آ
+  const mark = (u, v) => { if (u >= 0 && u < Lb && v >= 1 && v < rowsN) g[v * Lb + u] = 1 | LOCK | HAMZA; };
   for (const p of placed) {
-    if (p.mk === 'hb') {   // the alef stops short and the hamza sits in the line's bottom corner (the plate's إ)
-      for (let v = Hb - 3; v <= Hb; v++) g[v * Lb + p.x] = 0;
-      mark(p.x - 1, Hb - 2);
-    }
-    else if (p.mk === 'ha') p.gl.tall ? mark(p.x - 3, 1) : mark(p.x - 1, 1);
-    else if (p.mk === 'md') for (const u of [p.x - 4, p.x - 3, p.x - 2]) if (u >= 0) g[Lb + u] = 1 | LOCK;
+    if (p.mk === 'hb') { g[(Hb - 1) * Lb + p.x] = 0; g[Hb * Lb + p.x] = 0; mark(p.x, Hb); }
+    else if (p.mk === 'ha') p.gl.tall ? mark(p.x - 2, 1) : mark(p.x + Math.floor((p.w - 1) / 2), 1 + Hb - p.H - 2);
+    else if (p.mk === 'md') for (const u of [p.x - 3, p.x - 2]) if (u >= 0) g[Lb + u] = 1 | LOCK;
   }
-  placeDots(g, Lb, Hb, rowsN, placed, x0);
-  // tails under the baseline, inside the line: ر sweeps left, و drops, final ي returns right,
-  // final ع runs right
+  // with `defer`, what hangs under the baseline (dots below, tails) is handed back in `below`
+  // to drop into free space in the line underneath, as the ر of العسر does in the plate
+  const below = [];
+  placeDots(g, Lb, Hb, rowsN, placed, x0, shape.defer ? below : null);
+  // tails under the baseline: ر sweeps left, و drops, final ي returns right, final ع runs right
   for (const p of placed) {
     const kind = p.gl.tail, u = p.x, y1 = Hb + 1, y2 = Hb + 2;
-    if (!kind || rowsN < Hb + 3) continue;
+    if (!kind) continue;
+    if (shape.defer) { below.push({ tail: kind, u, w: p.w, id: p.id }); continue; }
     const cells = [[u, y1], [u, y2]];
-    const okDrop = ring(u, y1, (a, b) => b === Hb) && ring(u, y2, (a, b) => a === u && b === y1);
-    if (!okDrop) continue;
+    const okDrop = rowsN >= Hb + 3 && ring(u, y1, (a, b) => b === Hb) && ring(u, y2, (a, b) => a === u && b === y1);
+    if (!okDrop) { tailFallback(g, Lb, Hb, kind, u, p.id); continue; }
     if (kind === 'sweepL' || kind === 'sweepR' || kind === 'returnR') {
       const dir = kind === 'sweepL' ? -1 : 1, max = kind === 'returnR' ? p.w - 1 : kind === 'sweepL' ? 3 : Lb;
       let cx = u;
       while (Math.abs(cx - u) < max && ring(cx + dir, y2, (a, b) => (a === cx && b === y2) || (a === cx && b === y1))) { cx += dir; cells.push([cx, y2]); }
-      if (kind === 'sweepR' && cx - u < 2) continue;
+      if (kind === 'sweepR' && cx - u < 2) { tailFallback(g, Lb, Hb, kind, u, p.id); continue; }
     }
     for (const [a, b] of cells) g[b * Lb + a] = p.id;
   }
   if (o.arms && shape.top) addArms(g, Lb, stems, x0);
-  return { g, risers, rows: rowsN, Hb };
+  return { g, risers, rows: rowsN, Hb, below };
+}
+// with no room under the line: ر stands up from the baseline, the final ع turns its tail up
+function tailFallback(g, Lb, Hb, kind, u, id) {
+  if (kind === 'sweepL') { g[(Hb - 1) * Lb + u] = id; g[(Hb - 2) * Lb + u] = id; }
+  if (kind === 'sweepR') g[(Hb - 1) * Lb + u] = id;
+}
+
+// Drop the dots and tails under line `up` into the free top of line `lo` beneath it. Its gap row
+// is the row under up's baseline; the next row down is one gap from that baseline. Dots, و and
+// final ي must fit (otherwise the line gets rows of its own); ر and final ع fall back in place.
+function placeBelow(up, lo) {
+  const Ru = up.R, Rl = lo.R, rowsL = lo.rows, G = lo.local.slice(), ups = [];
+  const get = (u, v) => u < 0 || u >= Rl || v < 0 || v >= rowsL ? 0 : G[v * Rl + u];
+  const ring = (u, v, skip) => {
+    if (u < 0 || u >= Ru || v < 0 || v >= rowsL || get(u, v)) return false;
+    for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) {
+      if ((du || dv) && !(skip && skip(u + du, v + dv)) && get(u + du, v + dv)) return false;
+    }
+    return true;
+  };
+  for (const r of up.below) {
+    if (r.tail) continue;
+    const v = r.ya ? 3 : 1;
+    let ok = false;
+    for (const s of [0, -1, 1]) {
+      const cells = Array.from({ length: r.n }, (_, i) => [r.u0 + s + 2 * i, v]);
+      if (cells.every(([a, b]) => ring(a, b))) { for (const [a, b] of cells) G[b * Rl + a] = 1 | LOCK; ok = true; break; }
+    }
+    if (!ok) return false;
+  }
+  for (const r of up.below) {
+    if (!r.tail) continue;
+    const u = r.u, cells = [[u, 0], [u, 1]];
+    let ok = ring(u, 0) && ring(u, 1, (a, b) => a === u && b === 0);
+    if (ok && r.tail !== 'drop') {
+      const dir = r.tail === 'sweepL' ? -1 : 1, max = r.tail === 'returnR' ? r.w - 1 : r.tail === 'sweepL' ? 3 : Ru;
+      let cx = u;
+      while (Math.abs(cx - u) < max && ring(cx + dir, 1, (a, b) => (a === cx && (b === 1 || b === 0)))) { cx += dir; cells.push([cx, 1]); }
+      if (r.tail === 'sweepR' && cx - u < 2) ok = false;
+    }
+    if (ok) for (const [a, b] of cells) G[b * Rl + a] = r.id;
+    else if (r.tail === 'drop' || r.tail === 'returnR') return false;
+    else ups.push(r);
+  }
+  lo.local = G;
+  for (const r of ups) tailFallback(up.g, Ru, up.Hb, r.tail, r.u, r.id);
+  return true;
 }
 
 // Every dot is drawn, as a single square with a one-square gap from its letter: right above it,
 // inside the bowl for ن (as in the plate), or right under the baseline. Three dots sit in a row.
 // A dot moves at most one square sideways if its own spot is taken.
-function placeDots(g, Lb, Hb, rowsN, placed, x0) {
+function placeDots(g, Lb, Hb, rowsN, placed, x0, defer) {
   const clear = (u, v) => {
     if (u < x0 || u >= Lb || v < 1 || v >= rowsN || g[v * Lb + u]) return false;
     for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) {
@@ -508,6 +557,7 @@ function placeDots(g, Lb, Hb, rowsN, placed, x0) {
     if (d.a) v = k === 'nunF' ? topRow : p.gl.tall ? 1 : topRow - 2;
     else v = k === 'yaF' ? Hb + 4 : Hb + 2;
     const u0 = Math.round(cx - (n - 1));
+    if (d.b && defer) { defer.push({ u0, n, ya: k === 'yaF' }); continue; }
     let best = null;
     for (const du of [0, -1, 1]) {
       let ok = true;
@@ -557,8 +607,16 @@ function stackFit(words, ww, n, o, S) {
       if (last && i < N) return 'long';
       slack += (R - w) * (R - w);
       if (o.fromTop) grp.reverse();
-      const ws = grp.map(j => words[j]), rise = o.rise && !last;
-      const band = renderBand(ws, R, o, false, rise, lineShape(ws, o, rise));
+      const ws = grp.map(j => words[j]), rise = o.rise && !last, need = lineShape(ws, o, rise);
+      // lines interlock: what hangs under a line drops into free space in the line beneath it;
+      // only when a dot (or و / final ي tail) finds no room does the line get rows of its own
+      let band;
+      if (k === 0) band = renderBand(ws, R, o, false, rise, need);
+      else {
+        band = renderBand(ws, R, o, false, rise, { top: need.top, zone: 0, defer: true });
+        band.R = R;
+        if (band.below.length && !placeBelow(band, rows[k - 1])) band = renderBand(ws, R, o, false, rise, need);
+      }
       top -= band.rows;
       if (top < 0) return 'tall';
       rows.push(Object.assign(band, { local: band.g, R, k, y0: top - 1 }));
@@ -587,7 +645,7 @@ function stackOfSize(words, ww, c, o) {
 }
 function placeStack(st, ox, oy, T, grid) {
   for (const row of st.rows) {
-    for (let v = 1; v < row.rows; v++) for (let u = 0; u < row.R; u++) {
+    for (let v = 0; v < row.rows; v++) for (let u = 0; u < row.R; u++) {
       const val = row.local[v * row.R + u], y = row.y0 + v;
       if (val && y >= 0 && y < st.S) grid[(oy + y) * T + ox + u] = val;
     }
@@ -846,7 +904,7 @@ function update() {
 /* ---------------- Outline tracing ---------------- */
 function traceLoops(grid, T) {
   const W1 = T + 1, edges = [], out = new Map();
-  const f = (x, y) => x >= 0 && y >= 0 && x < T && y < T && grid[y * T + x] !== 0;
+  const f = (x, y) => x >= 0 && y >= 0 && x < T && y < T && grid[y * T + x] !== 0 && !(grid[y * T + x] & HAMZA);
   const add = (x0, y0, x1, y1) => { const k = y0 * W1 + x0; if (!out.has(k)) out.set(k, []); out.get(k).push(edges.length); edges.push([x0, y0, x1, y1]); };
   for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (f(x, y)) {
     if (!f(x, y - 1)) add(x, y, x + 1, y);
@@ -867,8 +925,18 @@ function traceLoops(grid, T) {
       return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
     }));
   }
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (grid[y * T + x] & HAMZA) loops.push(hamzaOutline(x, y));
   return loops;
 }
+// the hamza: one square with a notch cut into the middle of its right side, like a small ع
+const HAMZA_PTS = [[0, 0], [1, 0], [1, 0.34], [0.42, 0.34], [0.42, 0.66], [1, 0.66], [1, 1], [0, 1], [0, 0.66], [0, 0.34]];
+// its face in three convex pieces, every outline vertex shared, so the solid stays closed
+const HAMZA_FACES = [
+  [[0, 0], [1, 0], [1, 0.34], [0.42, 0.34], [0, 0.34]],
+  [[0, 0.34], [0.42, 0.34], [0.42, 0.66], [0, 0.66]],
+  [[1, 1], [0, 1], [0, 0.66], [0.42, 0.66], [1, 0.66]]
+];
+const hamzaOutline = (x, y) => HAMZA_PTS.map(([a, b]) => [x + a, y + b]);
 
 /* ---------------- 2D drawing ---------------- */
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -1039,6 +1107,27 @@ function heightMesh(hm, nx, ny, ex, ey, txt, toWorld, zOff, pos, tag, tagWall) {
   }
 }
 
+// a closed prism for every hamza square: its notched outline extruded from z0 to z1
+function hamzaPrisms(toWorld, z0, z1, pos, tag) {
+  const T = L.T, tri = (a, b, c) => { pos.push(...a, ...b, ...c); tag.push(1); };
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) {
+    if (!(L.grid[y * T + x] & HAMZA)) continue;
+    // the outline runs clockwise on the y-down grid, which is anticlockwise once mapped y-up
+    const pts = HAMZA_PTS.map(([a, b]) => toWorld(x + a, y + b));
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length];
+      tri([ax, ay, z0], [bx, by, z0], [bx, by, z1]);
+      tri([ax, ay, z0], [bx, by, z1], [ax, ay, z1]);
+    }
+    for (const face of HAMZA_FACES) {
+      const c = face.map(([a, b]) => toWorld(x + a, y + b));
+      for (let i = 1; i < c.length - 1; i++) {
+        tri([...c[0], z1], [...c[i], z1], [...c[i + 1], z1]);
+        tri([...c[0], z0], [...c[i + 1], z0], [...c[i], z0]);
+      }
+    }
+  }
+}
 function buildMesh() {
   const { cell } = geom(), P = O.plate, m = O.margin, T = L.T;
   const style = O.style === 'engraved' && O.diamond ? 'raised' : O.style;
@@ -1051,9 +1140,10 @@ function buildMesh() {
     const hText = style === 'letters' ? O.thick : relief, zOff = style === 'letters' ? 0 : O.thick;
     if (style !== 'letters') heightMesh([O.thick], 1, 1, [0, P], [0, P], [0], flipY, 0, pos, tag, () => 0);
     const hm = new Float32Array(T * T), txt = new Uint8Array(T * T);
-    for (let i = 0; i < T * T; i++) if (L.grid[i]) { hm[i] = hText; txt[i] = 1; }
+    for (let i = 0; i < T * T; i++) if (L.grid[i] && !(L.grid[i] & HAMZA)) { hm[i] = hText; txt[i] = 1; }
     const e = Array.from({ length: T + 1 }, (_, i) => i);
     heightMesh(hm, T, T, e, e, txt, (x, y) => flipY(...toPlate(x, y)), zOff, pos, tag, hiTag);
+    hamzaPrisms((x, y) => flipY(...toPlate(x, y)), zOff, zOff + hText, pos, tag);
   } else {
     const base = style === 'letters' ? 0 : O.thick;
     const hText = style === 'raised' ? O.thick + relief : style === 'engraved' ? O.thick - relief : O.thick;
@@ -1062,8 +1152,11 @@ function buildMesh() {
     if (m > 0) { edges[edges.length - 1] = P - m; edges.push(P); }
     const nx = edges.length - 1, off = m > 0 ? 1 : 0;
     const hm = new Float32Array(nx * nx).fill(base), txt = new Uint8Array(nx * nx);
-    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (L.grid[y * T + x]) { const i = (y + off) * nx + x + off; hm[i] = hText; txt[i] = 1; }
+    // the notched hamza is its own prism standing on the plate (engraving keeps it a full square)
+    const notch = style !== 'engraved';
+    for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (L.grid[y * T + x] && !(notch && (L.grid[y * T + x] & HAMZA))) { const i = (y + off) * nx + x + off; hm[i] = hText; txt[i] = 1; }
     heightMesh(hm, nx, nx, edges, edges, txt, flipY, 0, pos, tag, style === 'engraved' ? (hi, lo) => lo : hiTag);
+    if (notch) hamzaPrisms((x, y) => flipY(O.margin + x * cell, O.margin + y * cell), base, hText, pos, tag);
   }
   return { pos: new Float32Array(pos), tag };
 }
