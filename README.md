@@ -11,8 +11,8 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 - **Flush edges:** every line is stretched with kashida (joins, bowls and tails) until it touches both sides of the square.
 - **Rising stems:** alef and lam at the start of a lower line rise to the top edge.
 - **Right to left, looking left:** every letter is built from its correct initial, medial or final form, and anything that extends points left, the direction of writing. Alef and lam heads bend left over the short letters after them, ك opens to the left, and ر / ز drop below the baseline into free space.
-- **Taller letters:** short letters stretch upward through their stems only; heads, mouths and loops keep their size.
-- **Dots:** single square cells, placed only where they have clear space around them.
+- **Readable heights:** letters stretch upward through their stems only; heads, mouths and loops keep their size. Teeth and the bowls of ب ت ن ي س stay two cells under alef and lam, so they never read as alef.
+- **Every dot is drawn:** dots are single square cells. Dots above sit on the top row of the line; dots below get their own row under the baseline. Joins around dotted letters widen so dots never touch a neighbour, and dots are placed before alef/lam heads bend so nothing covers them.
 - **No filler:** only the letters themselves are drawn; no strokes are added to fill space.
 
 ### Arrangements

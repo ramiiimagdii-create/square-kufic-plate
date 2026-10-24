@@ -177,7 +177,6 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
         </div>
         <label class="check" id="riseField"><input id="rise" type="checkbox" checked> Carry alef and lam up to the top edge</label>
         <label class="check"><input id="arms" type="checkbox" checked> Bend alef and lam over short letters</label>
-        <label class="check"><input id="dots" type="checkbox" checked> Letter dots, where there is room</label>
         <p class="warn" id="shortWarn" hidden>This text is too short to fill a square with whole lines. Try Four-fold, or add words.</p>
       </div>
 
@@ -236,7 +235,7 @@ const RAW = {
   tooth: '#/#/#/#/#',
   baF:   '#../#../#../#../###',
   nunF:  '#...#/#...#/#...#/#...#/#####',
-  yaF:   '#../#../###/..#/###',
+  yaF:   '..#/..#/###/#../###',
   haM:   '###/..#/..#/..#/###',
   haF:   '..###/....#/....#/#...#/#####',
   dal:   '###/..#/###',
@@ -260,6 +259,7 @@ const ARMS = { alef: { c: 0, L: 1 }, lamM: { c: 0, L: 1 }, ta: { c: 0, L: 1 } };
 // open bowls and tails may widen; closed loops (ه م و ف) keep their shape
 // letters the guide keeps short (د ذ): they widen but never grow taller
 const NO_GROW = new Set(['dal']);
+const CAPPED = new Set(['tooth', 'sinM', 'sinF', 'nunF', 'baF', 'sadM', 'sadF', 'yaF']);
 const WIDEN = new Set(['baF', 'nunF', 'haF', 'aynF', 'faF', 'lamF', 'sinF', 'sadF', 'kafF', 'yaF', 'dal']);
 // cell flag kept on the ع / غ cup and on dots
 const LOCK = 1 << 30;
@@ -293,7 +293,7 @@ for (const k in RAW) {
 
 /* ---------------- Letters ----------------
    m = joining (initial/medial) form, f = final/isolated form, j = joins the next letter.
-   Square Kufic carries no dots, so letters sharing a skeleton share a glyph. */
+   d = the letter's dots: a = above, b = below. Every dot is always drawn. */
 const CH = {};
 function def(chars, spec) { for (const c of chars) CH[c] = Object.assign({ j: !!spec.m }, spec); }
 def('اأإآٱٲٳ', { f: 'alef' });
@@ -342,6 +342,8 @@ function cleanText(t) {
   return { text: out.replace(/\s+/g, ' ').trim(), unknown: [...unknown] };
 }
 
+// how far a letter's dots reach past its own sides (two dots over a one-cell tooth reach one cell out)
+const dotReach = t => t.d ? Math.max(0, Math.ceil((2 * (t.d.a || t.d.b) - 1 - t.g.w) / 2)) : 0;
 function wordTokens(word) {
   const ls = [...word].map(c => CH[c]);
   const toks = [];
@@ -350,9 +352,19 @@ function wordTokens(word) {
     toks.push({ t: 'g', g: GL[L.j && !last ? L.m : L.f], d: L.d });
     if (!last) toks.push({ t: L.j ? 'j' : 's' });
   });
+  // a join or gap next to a dotted letter is long enough that the dots never touch the neighbour
+  toks.forEach((t, i) => {
+    if (t.t === 'g') return;
+    t.min = 1 + 2 * Math.max(dotReach(toks[i - 1]), dotReach(toks[i + 1]));
+  });
+  toks.reachF = dotReach(toks[0]);
+  toks.reachL = dotReach(toks[toks.length - 1]);
   return toks;
 }
-const tokW = t => t.t === 'g' ? t.g.w : 1;
+const tokW = t => t.t === 'g' ? t.g.w : t.min || 1;
+// the gap between two neighbouring words, wide enough for the dots at their edges
+const wordGapBetween = (a, b, g) => Math.max(g, 1 + 2 * Math.max(a.reachL, b.reachF));
+const hasBelowDots = words => words.some(w => w.some(t => t.t === 'g' && t.d && t.d.b));
 
 /* ---------------- One band of text ----------------
    Local coordinates: u runs left→right along the band (reading starts at the
@@ -361,7 +373,8 @@ const tokW = t => t.t === 'g' ? t.g.w : 1;
    the alef/lam stems that open the band are returned so they can be carried up
    to the top edge of the square. */
 function renderBand(words, Lb, o, reserve, rise, bh = BH) {
-  const Hb = bh - 1, g = new Int32Array(Lb * bh), stems = {}, risers = [];
+  // rows: 0 gap, 1..Hb letter body (Hb = baseline), then with dots below: a gap row and the dot row
+  const Hb = bh - 1, rowsN = bh + (o.zb || 0), g = new Int32Array(Lb * rowsN), stems = {}, risers = [];
   // a glyph drawn H rows high sits on the baseline (row Hb)
   const draw = (gl, px, H, id, ext) => {
     for (const [r, c] of gl.at(H)) {
@@ -373,10 +386,10 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
     }
   };
   const toks = [];
-  words.forEach((w, i) => { if (i) toks.push({ t: 'w' }); for (const t of w) toks.push(Object.assign({}, t)); });
+  words.forEach((w, i) => { if (i) toks.push({ t: 'w', min: wordGapBetween(words[i - 1], w, o.wordGap) }); for (const t of w) toks.push(Object.assign({}, t)); });
   if (rise) for (const t of toks) { if (t.t === 'g' && !(t.g.w === 1 && t.g.arm)) break; t.lead = true; }
   const x0 = reserve ? 1 : 0;
-  toks.forEach(t => { t.len = t.t === 'w' ? o.wordGap : t.t === 'g' ? 0 : 1; });
+  toks.forEach(t => { t.len = t.t === 'g' ? 0 : t.min || 1; });
   const natural = toks.reduce((s, t) => s + (t.t === 'g' ? t.g.w : 0) + t.len, 0);
   const extra = Math.max(0, Lb - x0 - natural);
   const pick = list => { const free = list.filter(t => !t.lead); return free.length ? free : list; };
@@ -404,14 +417,17 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
       if (t.t === 'j') for (let c = 0; c < t.len; c++) g[Hb * Lb + x + c] = 1;
     }
   }
+  // dots first, so no bent stem ever covers them
+  placeDots(g, Lb, bh, rowsN, placed, x0);
   if (o.arms) addArms(g, Lb, stems, x0);
-  if (o.dots) placeDots(g, Lb, bh, placed, x0);
   // short letters grow upward: to the full band height, or up to the gap under a bent stem
   const desc = [];
   for (const [px, gl, , H0, ext, w, id] of placed) {
     if (gl.k === 'ra') desc.push(px);
     if (NO_GROW.has(gl.k)) continue;
-    for (const H of [Hb, Hb - 2]) {
+    // letters grow upward into free space; teeth and their bowls stop two cells under the
+    // stems so ب ت ن ي س never read as ا, and a dot above always keeps its row
+    for (const H of CAPPED.has(gl.k) ? [Hb - 2] : [Hb, Hb - 2]) {
       if (H <= H0) continue;
       let free = true;
       for (let v = 1 + Hb - H - (H < Hb ? 1 : 0); v <= Hb - H0 && free; v++) for (let c = px - 1; c <= px + w && free; c++) if (c >= 0 && c < Lb && g[v * Lb + c]) free = false;
@@ -421,34 +437,37 @@ function renderBand(words, Lb, o, reserve, rise, bh = BH) {
       break;
     }
   }
-  return { g, risers, desc };
+  return { g, risers, desc, rows: rowsN };
 }
 
-// Dots are single cells with a clear ring of empty cells all round. Each one goes to the
-// free spot nearest its letter (above or below it, or inside a bowl); with no room it is left out.
-function placeDots(g, Lb, bh, placed, x0) {
-  const vMax = bh - 2;
+// Every dot is drawn: a single cell with a clear ring of empty cells around it, above the
+// letter on the top row of the line, or below it on the dot row under the baseline. The
+// joins around dotted letters were already widened so the dots have room; if a spot is still
+// taken the dots slide sideways, and as a last resort they go on their own spot regardless.
+function placeDots(g, Lb, bh, rowsN, placed, x0) {
   const clear = (u, v) => {
-    if (u < x0 || u >= Lb || v < 1 || v > vMax) return false;
+    if (u < x0 || u >= Lb || v < 1 || v >= rowsN || g[v * Lb + u]) return false;
     for (let dv = -1; dv <= 1; dv++) for (let du = -1; du <= 1; du++) {
       const uu = u + du, vv = v + dv;
-      if (uu >= 0 && uu < Lb && vv >= 0 && vv < bh && g[vv * Lb + uu]) return false;
+      if (uu >= 0 && uu < Lb && vv >= 0 && vv < rowsN && g[vv * Lb + uu]) return false;
     }
     return true;
   };
   for (const [px, gl, d, H0, , w] of placed) {
     if (!d) continue;
-    const n = d.a || d.b, top = bh - H0, cx = px + (w - 1) / 2;
-    const vt = d.a ? Math.max(1, top - 2) : vMax;
+    const n = d.a || d.b, cx = px + (w - 1) / 2;
+    // dots above sit on the line's top row (ظ's lands beside its stem, over its loop)
+    const v = d.a ? 1 : rowsN - 1;
+    const u0 = Math.round(cx - (n - 1));
     let best = null;
-    for (let v = Math.max(1, vt - 3); v <= Math.min(vMax, vt + 3); v++) for (let u = px - 1; u + 2 * (n - 1) <= px + w; u++) {
+    for (const du of [0, -1, 1, -2, 2, -3, 3]) {
+      const u = u0 + du;
       let ok = true;
       for (let i = 0; i < n && ok; i++) ok = clear(u + 2 * i, v);
-      if (!ok) continue;
-      const score = Math.abs(u + (n - 1) - cx) + 2 * Math.abs(v - vt);
-      if (!best || score < best[0]) best = [score, u, v];
+      if (ok) { best = u; break; }
     }
-    if (best) for (let i = 0; i < n; i++) g[best[2] * Lb + best[1] + 2 * i] = 1 | LOCK;
+    if (best === null) best = Math.min(Math.max(u0, x0), Lb - 2 * n + 1);
+    for (let i = 0; i < n; i++) g[v * Lb + best + 2 * i] = 1 | LOCK;
   }
 }
 
@@ -474,25 +493,34 @@ const share = (i, k, tot) => Math.floor((i + 1) * tot / k) - Math.floor(i * tot 
    edge and the bottom baseline is the bottom edge. Lines are built from the
    bottom up; the stems that open a line rise to the top edge and the lines
    above step in to their left. Every line is stretched flush to both sides. */
-function stackFit(words, ww, n, o, bh = BH) {
-  const N = ww.length, g = o.wordGap, S = n * bh - 1;
+// Line k (counted from the bottom) is bh rows high, plus o.zb rows under its baseline for
+// dots below. The bottom line carries that dot row only when `low` is set.
+const lineHeights = (n, bh, o, low) => Array.from({ length: n }, (_, k) => bh + (k > 0 || low ? o.zb : 0));
+const stackSize = (n, bh, o, low) => lineHeights(n, bh, o, low).reduce((a, b) => a + b, 0) - 1;
+
+function stackFit(words, ww, n, o, bh = BH, low = false) {
+  const N = ww.length, hs = lineHeights(n, bh, o, low), S = stackSize(n, bh, o, low);
   if (N < n || Math.max(...ww) > S) return null;
   const seq = o.fromTop ? ww.map((_, i) => N - 1 - i) : ww.map((_, i) => i);
   const attempt = f => {
-    let R = S, i = 0, slack = 0; const rows = [];
+    let R = S, i = 0, slack = 0, top = S + 1; const rows = [];
     for (let k = 0; k < n; k++) {
       const last = k === n - 1, cap = last ? R : Math.floor(f * R);
       let w = 0; const grp = [];
       while (i < N) {
-        const add = (grp.length ? g : 0) + ww[seq[i]];
+        const add = (grp.length ? wordGapBetween(words[grp[grp.length - 1]], words[seq[i]], o.wordGap) : 0) + ww[seq[i]];
         if (w + add <= (grp.length ? cap : R)) { w += add; grp.push(seq[i]); i++; } else break;
       }
       if (!grp.length) return i >= N ? 'short' : 'long';
       if (last && i < N) return 'long';
       slack += (R - w) * (R - w);
       if (o.fromTop) grp.reverse();
-      const { g: local, risers, desc } = renderBand(grp.map(j => words[j]), R, o, false, o.rise && !last, bh);
-      rows.push({ local, R, k, risers, desc });
+      const ws = grp.map(j => words[j]);
+      // the bottom line has no dot row under it unless `low`: it may not hold dots below
+      if (k === 0 && !low && o.zb && hasBelowDots(ws)) return 'bad';
+      const { g: local, risers, desc, rows: rowsN } = renderBand(ws, R, o, false, o.rise && !last, bh);
+      top -= hs[k];
+      rows.push({ local, R, k, risers, desc, rowsN, y0: top - 1 });
       if (risers.length) R = Math.min(...risers) - 1;
       if (R < 3 && !last) return 'long';
     }
@@ -507,18 +535,30 @@ function stackFit(words, ww, n, o, bh = BH) {
   }
   return best ? { rows: best, S, n, bh } : null;
 }
-const fitStack = (words, ww, n, o, bh) => stackFit(words, ww, n, o, bh) || (o.rise ? stackFit(words, ww, n, Object.assign({}, o, { rise: false }), bh) : null);
+const fitStack = (words, ww, n, o, bh, low) => stackFit(words, ww, n, o, bh, low) || (o.rise ? stackFit(words, ww, n, Object.assign({}, o, { rise: false }), bh, low) : null);
+// a stacked block of exactly c × c cells, if one exists
+function stackOfSize(words, ww, c, o) {
+  for (let n = 1; n <= ww.length; n++) for (let bh = BH; bh <= BH + 6; bh++) for (const low of o.zb ? [false, true] : [false]) {
+    if (stackSize(n, bh, o, low) !== c) continue;
+    const st = fitStack(words, ww, n, Object.assign({}, o, { rise: true }), bh, low);
+    if (st) return st;
+  }
+  return null;
+}
 function placeStack(st, ox, oy, T, grid) {
   for (const row of st.rows) {
-    const y0 = st.S - st.bh * (row.k + 1);
-    for (let v = 1; v < st.bh; v++) for (let u = 0; u < row.R; u++) if (row.local[v * row.R + u]) grid[(oy + y0 + v) * T + ox + u] = row.local[v * row.R + u];
+    const y0 = row.y0;
+    for (let v = 1; v < row.rowsN; v++) for (let u = 0; u < row.R; u++) {
+      const val = row.local[v * row.R + u], y = y0 + v;
+      if (val && y < st.S) grid[(oy + y) * T + ox + u] = val;
+    }
     for (const c of row.risers) for (let y = 0; y <= y0; y++) grid[(oy + y) * T + ox + c] = 1;
   }
   // ر and ز drop below the baseline into free space under them, as written by hand;
   // where nothing below is free they keep their upright form
   const at = (x, y) => x < ox || y < oy || x >= ox + st.S || y >= oy + st.S ? 0 : grid[y * T + x];
   for (const row of st.rows) {
-    const y0 = st.S - st.bh * (row.k + 1), yb = oy + y0 + st.bh - 1;
+    const y0 = row.y0, yb = oy + y0 + st.bh - 1;
     for (const u of row.desc || []) {
       const x = ox + u;
       let len = 0;
@@ -543,6 +583,7 @@ function layout(text, o) {
   const words = text.split(' ').filter(Boolean).map(wordTokens);
   if (!words.length) return null;
   const ww = words.map(w => w.reduce((s, t) => s + tokW(t), 0));
+  o = Object.assign({}, o, { zb: hasBelowDots(words) ? 2 : 0 });   // a gap row and a dot row under each line
   const L = o.layout === 'stacked' ? layoutStacked(words, ww, o)
           : layoutRings(words, ww, o) || Object.assign(layoutStacked(words, ww, o), { fallback: true });
   return L;
@@ -576,7 +617,7 @@ function layoutStacked(words, ww, o) {
   // extra lines, which would leave a single stretched word per line
   const cands = [];
   for (let n = 1; n <= N; n++) if (!(o.lines > 0) || n === Math.min(o.lines, N))
-    for (let bh = BH; bh <= BH + 6; bh++) cands.push([n * bh - 1, n, bh]);
+    for (let bh = BH; bh <= BH + 6; bh++) for (const low of o.zb ? [false, true] : [false]) cands.push([stackSize(n, bh, o, low), n, bh, low]);
   cands.sort((a, b) => a[0] - b[0] || a[2] - b[2]);
   // among the smallest squares that fit, keep the one whose finished grid leaves the
   // fewest cells more than one cell away from any stroke (the guide's even one-unit gaps)
@@ -587,9 +628,9 @@ function layoutStacked(words, ww, o) {
   };
   let best = null, sMin = 0, tried = 0;
   for (const variant of o.rise ? [o, Object.assign({}, o, { rise: false })] : [o]) {
-    for (const [S, n, bh] of cands) {
+    for (const [S, n, bh, low] of cands) {
       if (sMin && (S > sMin * 1.3 || tried >= 10)) break;
-      const st = stackFit(words, ww, n, variant, bh);
+      const st = stackFit(words, ww, n, variant, bh, low);
       if (!st) continue;
       if (!sMin) sMin = S;
       tried++;
@@ -602,72 +643,82 @@ function layoutStacked(words, ww, o) {
   // too short to fill a square: one line, centred
   const W = ww.reduce((s, v) => s + v, 0) + o.wordGap * (N - 1), S = Math.max(W, BH - 1);
   const { F, T, grid } = frameUp(S, o);
-  const { g } = renderBand(words, S, o, false, false), y0 = Math.floor((S - BH + 1) / 2) - 1;
-  for (let v = 1; v < BH; v++) for (let u = 0; u < S; u++) if (g[v * S + u]) grid[(F + y0 + v) * T + F + u] = g[v * S + u];
+  const { g, rows: rowsN } = renderBand(words, S, o, false, false), y0 = Math.floor((S - rowsN + 1) / 2) - 1;
+  for (let v = 1; v < rowsN; v++) for (let u = 0; u < S; u++) if (g[v * S + u] && y0 + v >= 0 && y0 + v < S) grid[(F + y0 + v) * T + F + u] = g[v * S + u];
   return { grid, T, S, n: 1, unit: 'lines', short: true };
 }
 
-// Pinwheel rings: each ring is four bands of length s−BH, read bottom → left → top → right,
-// letters standing toward the centre, then the next ring inward. After m rings the
-// centre is either empty or exactly a stacked block (8n − 1 cells).
-function ringPlan(S, m) {
+// Pinwheel rings: each ring is four bands of length s − th, read bottom → left → top → right,
+// letters standing toward the centre, then the next ring inward. A band is th = BH + zb thick
+// (the dot row lies on its outer side). The centre left after m rings is empty or a stacked block.
+function ringPlan(S, m, th) {
   const bands = []; let o = 0, s = S;
-  for (let r = 0; r < m; r++) { for (let side = 0; side < 4; side++) bands.push({ o, s, side, Lb: s - BH }); o += BH; s -= 2 * BH; }
+  for (let r = 0; r < m; r++) { for (let side = 0; side < 4; side++) bands.push({ o, s, side, Lb: s - th }); o += th; s -= 2 * th; }
   return { bands, center: { o, s } };
 }
-function bandToGrid(local, b, F, T, grid) {
+function bandToGrid(local, b, th, F, T, grid) {
   const { o, s, side, Lb } = b;
-  for (let v = 0; v < BH; v++) for (let u = 0; u < Lb; u++) {
+  for (let v = 0; v < th; v++) for (let u = 0; u < Lb; u++) {
     const val = local[v * Lb + u];
     if (!val) continue;
     let x, y;
-    if (side === 0) { x = o + u; y = o + s - BH + v; }
-    else if (side === 1) { x = o + BH - 1 - v; y = o + u; }
-    else if (side === 2) { x = o + s - 1 - u; y = o + BH - 1 - v; }
-    else { x = o + s - BH + v; y = o + s - 1 - u; }
+    if (side === 0) { x = o + u; y = o + s - th + v; }
+    else if (side === 1) { x = o + th - 1 - v; y = o + u; }
+    else if (side === 2) { x = o + s - 1 - u; y = o + th - 1 - v; }
+    else { x = o + s - th + v; y = o + s - 1 - u; }
     grid[(y + F) * T + x + F] = val;
   }
 }
-const centreLines = c => c === 0 ? 0 : (c + 1) % BH === 0 ? (c + 1) / BH : -1;
 
 function layoutRings(words, ww, o) {
-  const N = ww.length, g = o.wordGap;
-  const lineW = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += ww[i]; return s + g * (b - a - 1); };
+  const N = ww.length, th = BH + o.zb;
+  const lineW = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += ww[i] + (i > a ? wordGapBetween(words[i - 1], words[i], o.wordGap) : 0); return s; };
+  const sizes = new Set();   // sizes a stacked centre block can have
+  for (let n = 1; n <= N; n++) for (let bh = BH; bh <= BH + 6; bh++) { sizes.add(stackSize(n, bh, o, false)); if (o.zb) sizes.add(stackSize(n, bh, o, true)); }
   const build = (S, plan, assign, centre) => {
     const { F, T, grid } = frameUp(S, o);
-    plan.bands.forEach((b, i) => bandToGrid(renderBand(words.slice(assign[i][0], assign[i][1]), b.Lb, o, true, false).g, b, F, T, grid));
+    plan.bands.forEach((b, i) => bandToGrid(renderBand(words.slice(assign[i][0], assign[i][1]), b.Lb, o, true, false).g, b, th, F, T, grid));
     if (centre) placeStack(centre, F + plan.center.o, F + plan.center.o, T, grid);
     return { grid, T, S, n: plan.bands.length + (centre ? centre.n : 0), unit: 'bands' };
   };
   if (o.layout === 'fourfold') {
     // the phrase on all four sides; the centre repeats it as a stacked block
     const W = lineW(0, N);
-    for (let nc = 0; nc < 40; nc++) {
-      const S = 2 * BH + (nc ? nc * BH - 1 : 0);
-      if (S < W + 1 + BH) continue;
-      const plan = ringPlan(S, 1), centre = nc ? fitStack(words, ww, nc, Object.assign({}, o, { rise: true })) : null;
-      if (nc && !centre) continue;
+    for (let S = Math.max(2 * th, W + 1 + th); S < W + 1 + th + 200; S++) {
+      const plan = ringPlan(S, 1, th), c = plan.center.s;
+      if (c !== 0 && !sizes.has(c)) continue;
+      const centre = c ? stackOfSize(words, ww, c, o) : null;
+      if (c && !centre) continue;
       return build(S, plan, plan.bands.map(() => [0, N]), centre);
     }
     return null;
   }
-  // spiral: every band carries words, the last words fill the centre block
-  const limit = Math.max(300, Math.ceil(Math.sqrt(lineW(0, N) * BH * 1.6)) + 40);
-  for (let S = Math.max(2 * BH, Math.max(...ww) + 1 + BH); S < limit; S++) {
-    for (let m = Math.floor(S / (2 * BH)); m >= 1; m--) {
-      const plan = ringPlan(S, m), B = plan.bands.length, nc = centreLines(plan.center.s);
-      if (nc < 0 || B > N) continue;
+  // spiral: every band carries words, the last words fill the centre block. Of the first
+  // few spirals that fit, keep the one that leaves the least empty space.
+  const limit = Math.max(300, Math.ceil(Math.sqrt(lineW(0, N) * th * 1.6)) + 40);
+  let best = null, sMin = 0, found = 0;
+  for (let S = Math.max(2 * th, Math.max(...ww) + 1 + th); S < limit; S++) {
+    if (sMin && (S > sMin * 1.3 || found >= 8)) break;
+    for (let m = Math.floor(S / (2 * th)); m >= 1; m--) {
+      const plan = ringPlan(S, m, th), B = plan.bands.length, c = plan.center.s;
+      if ((c !== 0 && !sizes.has(c)) || B > N) continue;
       const pick = balance(plan.bands, N, lineW);
-      for (let t = nc ? N - nc : N; t >= B; t--) {
+      // try a few ways of sharing the words between the rings and the centre
+      for (let t = c ? N - 1 : N, tries = 0; t >= B && tries < 6; t--) {
         const assign = pick(t);
         if (!assign) continue;
-        const centre = nc ? fitStack(words.slice(t), ww.slice(t), nc, Object.assign({}, o, { rise: true })) : null;
-        if (nc && !centre) continue;
-        return build(S, plan, assign, centre);
+        const centre = c ? stackOfSize(words.slice(t), ww.slice(t), c, o) : null;
+        if (c && !centre) continue;
+        const L = build(S, plan, assign, centre);
+        if (!sMin) sMin = S;
+        tries++;
+        const score = voidCells(L.grid, L.T) / (S * S) * 1000 + 4 * (S - sMin);
+        if (!best || score < best.score) best = { L, score };
       }
+      if (best && best.L.S === S) found++;
     }
   }
-  return null;
+  return best ? best.L : null;
 }
 
 // split the first t words into exactly bands.length non-empty groups, minimising squared slack;
@@ -717,7 +768,7 @@ function readOpts() {
     plate: Math.max(10, num('plate', 195)), margin: Math.max(0, num('margin', 6)),
     frame: $('frame').checked, layout: $('layout').value, diamond: $('orient').value === 'diamond',
     lines: parseInt($('lines').value, 10) || 0, justify: $('justify').value,
-    wordGap: Math.max(1, Math.round(num('wordGap', 1))), arms: $('arms').checked, dots: $('dots').checked,
+    wordGap: Math.max(1, Math.round(num('wordGap', 1))), arms: $('arms').checked,
     rise: $('rise').checked, fromTop: $('start').value === 'top',
     style: $('style').value, thick: Math.max(0.2, num('thick', 5)), relief: Math.max(0.1, num('relief', 2)),
     dpi: parseInt($('dpi').value, 10), svgPlate: $('svgPlate').value === '1'
