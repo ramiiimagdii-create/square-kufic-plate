@@ -12,6 +12,7 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 - **Rising stems:** alef and lam at the start of a lower line rise to the top edge.
 - **Filled space:** short letters grow to fill the line, alef/lam bend over short neighbours, and ر / ز drop below the baseline into free space.
 - **Dots:** single square cells, placed only where they have clear space around them.
+- **Even gaps:** following the guide's one-unit rule, free stroke ends grow (straight, or bending at most twice for alef/lam) until every stroke is one cell from its neighbour. Teeth only grow straight, the ع / غ cup and dots never grow, and the line breaks are chosen to leave the least empty space.
 - **No filler:** only written words appear, never decoration.
 
 ### Arrangements
