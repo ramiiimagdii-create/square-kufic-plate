@@ -825,7 +825,8 @@ function layoutPreset(rows, o) {
    Rows are relative to the body top: -2,-1 above · 0,1,2 body (2 = baseline) · 3,4 below. */
 const K2 = (() => {
 const L = {};
-const def = (chars, spec) => { for (const c of chars) L[c] = spec; };
+let SPID = 0;
+const def = (chars, spec) => { spec.id = ++SPID; for (const c of chars) L[c] = spec; };
 def('اٱ', { t: 'alef' }); def('أ', { t: 'alef', ha: 1 }); def('إ', { t: 'alef', hb: 1 }); def('آ', { t: 'alef', md: 1 });
 def('ب', { t: 'bt', db: 1 }); def('ت', { t: 'bt', da: 2 }); def('ث', { t: 'bt', da: 3 }); def('ن', { t: 'bt', da: 1 });
 def('يی', { t: 'bt', db: 2 }); def('ئ', { t: 'bt', ha: 1 }); def('ى', { t: 'bt' });
@@ -905,6 +906,8 @@ function glyph(sp, fin, w, B) {
   if (sp.md) marks.push([-2, -1, 0, 1], [-2, 0, 0, 1], [-2, 1, 0, 1]);   // the madda: one short bar
   return { w, cells: uniq(cells), marks, foot };
 }
+const GC = new Map();
+const glyphC = (sp, fin, w, B) => { const key = ((sp.id * 2 + (fin ? 1 : 0)) * 512 + w) * 16 + B; let g = GC.get(key); if (!g) { g = glyph(sp, fin, w, B); g.all = g.cells.concat(g.marks); GC.set(key, g); } return g; };
 const uniq = a => { const s = new Set(), o = []; for (const p of a) { const k = p[0] * 1000 + p[1]; if (!s.has(k)) { s.add(k); o.push(p); } } return o; };
 // [minimum width, can it widen]
 function widthOf(sp, fin) {
@@ -943,8 +946,8 @@ function parse(text) {
    Returns the glyphs, each with u0 = column of its own column 0 counted from the line's left. */
 function arrange(letters, widths, extra, B) {
   B = B || 2;
-  const gs = letters.map((l, i) => Object.assign(glyph(l.sp, l.fin, widths[i], B), { L: l }));
-  const span = (g, rows) => { let a = Infinity, b = -Infinity; for (const [r, c] of g.cells.concat(g.marks)) if (rows(r)) { a = Math.min(a, c); b = Math.max(b, c); } return [a, b]; };
+  const gs = letters.map((l, i) => Object.assign({}, glyphC(l.sp, l.fin, widths[i], B), { L: l }));
+  const span = (g, rows) => { let a = Infinity, b = -Infinity; for (const [r, c] of g.all) if (rows(r)) { if (c < a) a = c; if (c > b) b = c; } return [a, b]; };
   const up = r => r < 0, dn = r => r > B;
   let d = 0; const ds = [];   // ds[i] = distance of glyph i's right edge from the line's right end
   // how far left the marks above and the tails/dots below have reached so far (a ر tail or a row
@@ -964,7 +967,7 @@ function arrange(letters, widths, extra, B) {
   }
   // marks or tails hanging past either end of the line get room (kept even, to stay on the lattice)
   let padR = 0, padL = 0;
-  gs.forEach((g, i) => { for (const [, c] of g.cells.concat(g.marks)) { const fromRight = ds[i] + (g.w - 1 - c); padR = Math.max(padR, -fromRight); padL = Math.max(padL, fromRight - (d - 1)); } });
+  gs.forEach((g, i) => { for (const [, c] of g.all) { const fromRight = ds[i] + (g.w - 1 - c); padR = Math.max(padR, -fromRight); padL = Math.max(padL, fromRight - (d - 1)); } });
   padR += padR % 2; padL += padL % 2;
   const width = d + padR + padL;
   gs.forEach((g, i) => { g.u0 = width - 1 - padR - ds[i] - (g.w - 1); });
@@ -982,36 +985,32 @@ function fitLine(letters, S, turn, B) {
   if (a.width > S) return null;
   const wide = letters.map((l, i) => i).filter(i => letters[i].wd);
   const joins = letters.map((l, i) => i).filter(i => i && letters[i].jr), gaps = letters.map((l, i) => i).filter(i => i && !letters[i].jr);
-  let k = turn || 0, guard = 0, cap = 4;   // a letter widens by at most `cap` before the joins take a share
-  while (a.width < S && guard++ < 4000) {
-    let done = false;
-    if (wide.length) {
-      // the least stretched letter first
-      const order = wide.map((i, n) => ({ i, key: (widths[i] - letters[i].min) * 100 + ((n - k % wide.length + wide.length) % wide.length) })).sort((p, q) => p.key - q.key);
-      for (const { i } of order) {
-        if (widths[i] - letters[i].min >= cap) continue;
-        widths[i] += 2; const b = arrange(letters, widths, extra, B);
-        if (b.width <= S) { a = b; done = true; break; }
-        widths[i] -= 2;
-      }
+  const k = turn || 0;
+  // Each step adds two columns. Plan all the steps the spare width allows, in the order the rules
+  // give (least stretched letter first, a letter widens by at most `cap` before every join has
+  // taken one step, then `cap` grows), arrange once, and back off if a mark pushed things wider.
+  const plan = steps => {
+    const w = widths.slice(), e = extra.slice(); let cap = 4, guard = 0;
+    while (steps > 0 && guard++ < 10000) {
+      let pick = -1, best = Infinity;
+      wide.forEach((i, n) => { const used = w[i] - letters[i].min; if (used >= cap) return; const key = used * 100 + ((n - k % wide.length + wide.length) % wide.length); if (key < best) { best = key; pick = i; } });
+      if (pick >= 0) { w[pick] += 2; steps--; continue; }
+      const jl = joins.filter(i => e[i] < cap / 4);
+      if (jl.length) { const i = jl.slice().sort((p, q) => e[p] - e[q] || ((p + k) % 7) - ((q + k) % 7))[0]; e[i]++; steps--; continue; }
+      if (cap < 60) { cap += 4; continue; }
+      if (!gaps.length) return null;
+      const i = gaps.slice().sort((p, q) => e[p] - e[q])[0]; e[i]++; steps--;
     }
-    if (!done) {
-      // joins lengthen by one step each; after that the letters may widen further
-      const pool = joins.filter(i => extra[i] < Math.max(1, cap / 4 - 0));
-      const order = pool.slice().sort((p, q) => extra[p] - extra[q] || ((p + k) % 7) - ((q + k) % 7));
-      for (const i of order) {
-        extra[i]++; const b = arrange(letters, widths, extra, B);
-        if (b.width <= S) { a = b; done = true; break; }
-        extra[i]--;
-      }
-      if (!done) {
-        if (cap < 60) { cap += 4; continue; }
-        for (const i of gaps) { extra[i]++; const b = arrange(letters, widths, extra, B); if (b.width <= S) { a = b; done = true; break; } extra[i]--; }
-        if (!done) return null;
-      }
-    }
+    return { w, e };
+  };
+  for (let steps = Math.floor((S - a.width) / 2), tries = 0; steps >= 0 && tries < 40; tries++) {
+    const p = plan(steps); if (!p) return null;
+    const b = arrange(letters, p.w, p.e, B);
+    if (b.width === S) return b;
+    if (b.width > S) { steps -= Math.max(1, Math.ceil((b.width - S) / 2)); continue; }
+    steps += Math.max(1, Math.floor((S - b.width) / 2));
   }
-  return a.width === S ? a : null;
+  return null;
 }
 
 /* ---------------- Composition ---------------- */
@@ -1047,9 +1046,9 @@ function paint(lines, tops, S) {
    - letters never touch, even at a corner, unless they are joined on the baseline;
    - dots and hamza stand clear of everything;
    - no stroke is two squares thick. */
-function violations(P, S) {
+function violations(P, S, y0) {
   const { grid, id, pairs } = P; let bad = 0;
-  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+  for (let y = y0 || 0; y < S; y++) for (let x = 0; x < S; x++) {
     const a = id[y * S + x]; if (!a) continue;
     for (const [dy, dx] of [[0, 1], [1, -1], [1, 0], [1, 1]]) {
       const yy = y + dy, xx = x + dx; if (yy >= S || xx < 0 || xx >= S) continue;
@@ -1128,8 +1127,9 @@ function compose(groups, lift) {
       let ok = null;
       for (let turn = 0; turn < 12 && !ok; turn++) {
         const a = fitLine(groups[i], S, turn, Bof(i)); if (!a) break;
-        const P = paint(lines.concat([a]), tops, S);
-        if (!P.clash && violations(P, S) === 0) ok = a;
+        // only the line above can reach this one
+        const P = i ? paint([lines[i - 1], a], [tops[i - 1], tops[i]], S) : paint([a], [tops[i]], S);
+        if (!P.clash && violations(P, S, Math.max(0, tops[i] - 3)) === 0) ok = a;
       }
       if (ok) lines.push(ok); else failed = i;
     }

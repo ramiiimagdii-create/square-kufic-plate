@@ -6,18 +6,13 @@ Open `index.html` in a browser. There is no build step and nothing to install.
 
 ## What it does
 
-The letters were chosen square by square with the owner, starting from a reference plate of إن مع العسر يسرا (a 17 × 17 grid). `letter-sheet.png` shows every letter in every form.
+The letters follow a square Kufic letter chart (each letter's start, middle, end and isolated forms) and the owner's reference plate of إن مع العسر يسرا, a 17 × 17 grid.
 
-- **Grid:** every stroke and every gap is one square.
-- **Heights:** short letters stand two squares above the baseline; ا ل ك ط are full-height stems; ف ق and م are boxes raised on a stem; ه is a short box with an ear.
-- **Shapes:** ع / غ a small C opening right; ك a tall stem with its bar reaching right; ص a wide loop with a tooth; final ب ت ث a tooth plus a long tail; final ل a stretching bowl; د a small hook that stretches.
-- **Tails:** ر drops and sweeps left; و drops its tail from its right side, like a 9; final ي returns right under the line; final ع runs right under the line.
-- **Dots:** every dot is drawn, one square, right above or below its letter with a one-square gap (inside the bowl for ن); three dots in a row.
-- **Hamza:** one square with a notch, as in the plate, always directly above or below its letter: under إ (the alef stops short), above أ and آ (the alef starts lower), above ؤ ئ. It is drawn notched in the preview, SVG, PNG and STL.
-- **Lines:** each line is only as tall as its letters need, one gap row apart. Lines interlock as in the plate: dots below and tails drop into free space in the line underneath, and a line only gets rows of its own when a dot finds no room. The square is chosen so the lines fill it exactly. When the lines come out a few rows short, a line is lifted: every letter in it grows by the same number of rows (stems, teeth and strokes lengthen; the ع head, the م و ة boxes, ر and ء keep their size). Lines are kept close to even in width, so no short word is stretched across a whole line when a better split exists. The bottom line never gets a row of its own for dots. Alef and lam that open a line rise to the top edge, and alef/lam heads bend over the short letters beside them, but never over a long stretched join.
-- **Kashida:** joins, tails and bowls stretch so every line is flush on both sides; the gap between words is always one square.
-- **Reading order:** top to bottom or bottom to top, or let the tool pick whichever fills the square better.
-- **Reference pictures:** a verse copied square for square from a picture you supplied is drawn exactly as in that picture (`PRESETS` in `index.html`): وفي السماء رزقكم وما توعدون (27 × 23, centred on the plate), ذلك فضل الله يؤتيه من يشاء والله ذو الفضل العظيم (35 × 35, four lines after the gold mosaic) and وجعل بينكم مودة ورحمة (27 × 27, in the manner of the plate).
+- **Grid:** every stroke and every gap is one square, and strokes sit on every other row and column, so all spacing is even.
+- **Lines:** a line is three squares high. Ascenders, dots and hamza sit in the two rows above it; tails and dots below sit in the two rows under it. These rows are shared with the neighbouring line, so lines interlock.
+- **Filling the square:** the line breaks are chosen so lines are about the same length. A short line is filled by widening boxes, bowls and joins. If the lines are too low for the widest one, a line grows taller instead of being stretched thin.
+- **Rule check:** every layout is checked before it is shown. Letters never touch unless they are joined on the baseline, dots and hamza stand clear of everything, and no stroke is two squares thick. Every distinct word in the Quran and a sample of whole verses pass this check.
+- **Reference pictures:** a few verses are stored square by square from pictures and come out exactly as drawn: إن مع العسر يسرا (the reference plate), وفي السماء رزقكم وما توعدون, ذلك فضل الله يؤتيه من يشاء والله ذو الفضل العظيم, and وجعل بينكم مودة ورحمة.
 - **Hand editing:** "Edit squares" lets you click or drag on the plate to add or remove squares, with undo and reset. Every export uses the edited plate.
 
 ### Arrangements
