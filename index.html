@@ -183,7 +183,7 @@ textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px s
         </div>
         <div class="row">
           <div class="field" id="startField"><label for="start">First line</label>
-            <select id="start"><option value="best">Whichever fits best</option><option value="top">At the top</option><option value="bottom">At the bottom</option></select></div>
+            <select id="start"><option value="best">Whichever fits best</option><option value="top" selected>At the top</option><option value="bottom">At the bottom</option></select></div>
           <div class="field"><label for="wordGap">Word gap (cells)</label><input id="wordGap" type="number" min="1" max="6" step="1" value="1"></div>
         </div>
         <label class="check" id="riseField"><input id="rise" type="checkbox" checked> Carry alef and lam up to the top edge</label>
@@ -694,6 +694,26 @@ function placeStack(st, ox, oy, T, grid) {
 /* ---------------- Compositions ---------------- */
 // Compositions drawn square by square from reference pictures; the text picks them up as is.
 const PRESETS = {
+  // the reference plate, square for square
+  'إن مع العسر يسرا': [
+    '#########.#.#.#.#',
+    '#.........#.#.#.#',
+    '#.#.#.#.#.#.#.#.#',
+    '#.#.#.#.#.#.#.#.#',
+    '#.###.#####.#.#.#',
+    '..#.#.#.....#.#.#',
+    '###.###.#.#.#.#.#',
+    '............#.#.#',
+    '#.#.#.#.###.#.#.#',
+    '#.#.#.#.#...#.#.#',
+    '#############.#.#',
+    '#...............#',
+    '#.###.###.#.#.#.#',
+    '..#...#.#.#...#.#',
+    '#########.#####.#',
+    '#................',
+    '###############.h'
+  ],
   'وفي السماء رزقكم وما توعدون': [
     '#.#########.###########.###',
     '#...........#.......#.#.#.#',
@@ -797,8 +817,407 @@ function layoutPreset(rows, o) {
   return { grid, T, S, n: 'picture', unit: 'reference', preset: true };
 }
 
+/* ---------------- Square Kufic engine ----------------
+   Lattice writing after the 17 × 17 reference plate and the letter chart: every stroke and every
+   gap is one square, strokes on even rows and columns. A line has a 3-row body (top, middle,
+   baseline); the two rows above it carry ascenders, dots and hamza, the two rows below carry tails
+   and dots. Lines share those rows, so tails and dots of one line interlock with the next.
+   Rows are relative to the body top: -2,-1 above · 0,1,2 body (2 = baseline) · 3,4 below. */
+const K2 = (() => {
+const L = {};
+const def = (chars, spec) => { for (const c of chars) L[c] = spec; };
+def('اٱ', { t: 'alef' }); def('أ', { t: 'alef', ha: 1 }); def('إ', { t: 'alef', hb: 1 }); def('آ', { t: 'alef', md: 1 });
+def('ب', { t: 'bt', db: 1 }); def('ت', { t: 'bt', da: 2 }); def('ث', { t: 'bt', da: 3 }); def('ن', { t: 'bt', da: 1 });
+def('يی', { t: 'bt', db: 2 }); def('ئ', { t: 'bt', ha: 1 }); def('ى', { t: 'bt' });
+def('ج', { t: 'jim', db: 1 }); def('ح', { t: 'jim' }); def('خ', { t: 'jim', da: 1 });
+def('د', { t: 'dal' }); def('ذ', { t: 'dal', da: 1 }); def('ر', { t: 'ra' }); def('ز', { t: 'ra', da: 1 });
+def('س', { t: 'sin' }); def('ش', { t: 'sin', da: 3 }); def('ص', { t: 'sad' }); def('ض', { t: 'sad', da: 1 });
+def('ط', { t: 'ta' }); def('ظ', { t: 'ta', da: 1 }); def('ع', { t: 'ayn' }); def('غ', { t: 'ayn', da: 1 });
+def('ف', { t: 'fa', da: 1 }); def('ق', { t: 'fa', da: 2 }); def('كکگ', { t: 'kaf' }); def('ل', { t: 'lam' });
+def('م', { t: 'mim' }); def('هہ', { t: 'ha' }); def('ة', { t: 'ha', da: 2 }); def('و', { t: 'waw' }); def('ؤ', { t: 'waw', ha: 1 });
+def('ء', { t: 'hz' });
+const NOJOIN = new Set(['alef', 'dal', 'ra', 'waw', 'hz']);
+
+/* One letter drawn at width w in a line whose baseline is row B (2 normally; 4 or 6 in a lifted
+   line, where every letter stands taller). fin = it does not join the next letter.
+   Returns { w, cells:[[r,c]], marks:[[r,c,flag]], foot:{r,c,dir} | null }. */
+function glyph(sp, fin, w, B) {
+  B = B || 2;
+  const cells = [], marks = [];
+  const H = (r, a, b) => { for (let c = a; c <= b; c++) cells.push([r, c]); };
+  const V = (c, a, b) => { for (let r = a; r <= b; r++) cells.push([r, c]); };
+  const box = (c0, c1, r0, r1) => { H(r0, c0, c1); H(r1, c0, c1); V(c0, r0, r1); V(c1, r0, r1); };
+  // a small box at the top of the line, standing on a stem at its right (the raised ف ق و of the chart)
+  const raised = (c0, c1) => { box(c0, c1, 0, 2); V(c1, 2, B); };
+  let ac = (w - 1) / 2, foot = null, dotBelowAt = null;
+  switch (sp.t) {
+    case 'alef':
+      if (sp.ha || sp.md) V(0, 0, B); else V(0, -2, B);
+      break;
+    case 'lam':
+      if (!fin) V(0, -2, B); else { V(w - 1, -2, B); H(B, 0, w - 1); V(0, B - 2, B); }
+      break;
+    case 'bt':
+      if (!fin) V(0, 0, B); else { V(0, 0, B); H(B, 0, w - 1); V(w - 1, 0, B); }
+      break;
+    case 'jim':
+      H(0, 0, w - 1); V(w - 1, 0, B); H(B, 0, w - 1);
+      if (fin) {   // the tail drops from the left end and runs back right under the letter
+        V(0, B, B + 2);
+        if (sp.db) { H(B + 2, 0, 2); dotBelowAt = w - 1; } else { H(B + 2, 0, w - 1); foot = { r: B + 2, c: w - 1, dir: 1 }; }
+      }
+      break;
+    case 'dal': H(0, 0, w - 1); V(w - 1, 0, B); H(B, 0, w - 1); break;
+    case 'ra': V(0, 0, B + 2); cells.push([B + 2, -1], [B + 2, -2]); foot = { r: B + 2, c: -2, dir: -1 }; break;
+    case 'sin':
+      if (!fin) { V(0, 0, B); V(2, 0, B); V(4, 0, B); H(B, 0, 4); ac = 2; }
+      else { V(2, 0, B + 2); V(4, 0, B); V(6, 0, B); H(B, 2, 6); H(B + 2, 0, 2); V(0, B, B + 2); ac = 4; }
+      break;
+    case 'sad':
+      if (!fin) { V(0, 0, B); H(B, 0, w - 1); box(2, w - 1, B - 2, B); ac = (w + 1) / 2; }
+      else { V(2, 0, B + 2); H(B + 2, 0, 2); V(0, B, B + 2); H(B, 2, 4); box(4, w - 1, B - 2, B); ac = (w + 3) / 2; }
+      break;
+    case 'ta': V(0, -2, B); box(0, w - 1, B - 2, B); ac = Math.max(2, (w - 1) / 2 + ((w - 1) / 2) % 2); break;
+    case 'ayn':   // a small C opening right; in a lifted line it stands on a stem
+      H(0, 0, 2); V(0, 0, 2); H(2, 0, 2); ac = 1;
+      if (B > 2) { V(2, 2, B); H(B, 0, 2); }
+      if (fin) { V(0, B, B + 2); H(B + 2, 0, 2); foot = { r: B + 2, c: 2, dir: 1 }; }
+      break;
+    case 'fa':
+      if (!fin) { raised(0, w - 1); H(B, 0, w - 1); }
+      else { box(w - 3, w - 1, 0, 2); V(w - 1, 2, B + 2); H(B + 2, 0, w - 1); V(0, B, B + 2); ac = w - 2; }
+      break;
+    case 'kaf': H(-2, 0, w - 1); V(0, -2, B - 2); H(B - 2, 0, w - 1); V(w - 1, B - 2, B); H(B, 0, w - 1); break;
+    case 'mim':
+      if (!fin) box(0, w - 1, 0, B); else { box(2, w - 1, 0, B); H(B, 0, 2); V(0, B, B + 2); }
+      break;
+    case 'ha':
+      if (!fin) { box(0, w - 1, -2, 0); box(0, w - 1, 0, B); } else box(0, w - 1, 0, B);
+      break;
+    case 'waw': raised(0, w - 1); V(w - 1, B, B + 2); H(B + 2, w - 3, w - 1); foot = { r: B + 2, c: w - 3, dir: -1 }; break;
+    case 'hz': marks.push([B, 0, HAMZA]); break;
+  }
+  const row = (n, r) => { const c0 = Math.round(ac) - (n - 1); for (let i = 0; i < n; i++) marks.push([r, c0 + 2 * i, 0]); };
+  if (sp.da) row(sp.da, -2);
+  if (sp.db) { if (dotBelowAt !== null) marks.push([B + 2, dotBelowAt, 0]); else row(sp.db, B + 2); }
+  if (sp.ha) marks.push([-2, Math.round(ac), HAMZA]);
+  if (sp.hb) marks.push([B + 2, 0, HAMZA]);
+  if (sp.md) marks.push([-2, -1, 0, 1], [-2, 0, 0, 1], [-2, 1, 0, 1]);   // the madda: one short bar
+  return { w, cells: uniq(cells), marks, foot };
+}
+const uniq = a => { const s = new Set(), o = []; for (const p of a) { const k = p[0] * 1000 + p[1]; if (!s.has(k)) { s.add(k); o.push(p); } } return o; };
+// [minimum width, can it widen]
+function widthOf(sp, fin) {
+  switch (sp.t) {
+    case 'alef': case 'ra': case 'hz': return [1, false];
+    case 'lam': return fin ? [3, true] : [1, false];
+    case 'bt': return fin ? [3, true] : [1, false];
+    case 'jim': return fin && sp.db ? [5, true] : [3, true];
+    case 'dal': return [3, true];
+    case 'sin': return fin ? [7, false] : [5, false];
+    case 'sad': return fin ? [9, true] : [7, true];
+    case 'ta': return [5, true];
+    case 'ayn': return [3, false];
+    case 'fa': return fin ? [5, true] : [3, true];
+    case 'kaf': return [5, true];
+    case 'mim': return fin ? [5, true] : [3, true];
+    case 'ha': case 'waw': return [3, true];
+  }
+}
+
+// text → words → letters with their joining
+function parse(text) {
+  return text.split(' ').filter(Boolean).map(word => {
+    const ls = [...word].map(ch => L[ch]).filter(Boolean).map(sp => ({ sp }));
+    ls.forEach((l, i) => {
+      // nothing joins on from ا د ذ ر ز و, from ة, or into a ء
+      l.fin = i === ls.length - 1 || NOJOIN.has(l.sp.t) || (l.sp.da === 2 && l.sp.t === 'ha') || ls[i + 1].sp.t === 'hz';
+      l.jr = i > 0 && !ls[i - 1].fin;   // joined from the letter before
+      const [mw, wd] = widthOf(l.sp, l.fin); l.min = mw; l.wd = wd;
+    });
+    return ls;
+  }).filter(w => w.length);
+}
+
+/* A line: letters right to left, with the separators between them (joins or gaps, always odd).
+   Returns the glyphs, each with u0 = column of its own column 0 counted from the line's left. */
+function arrange(letters, widths, extra, B) {
+  B = B || 2;
+  const gs = letters.map((l, i) => Object.assign(glyph(l.sp, l.fin, widths[i], B), { L: l }));
+  const span = (g, rows) => { let a = Infinity, b = -Infinity; for (const [r, c] of g.cells.concat(g.marks)) if (rows(r)) { a = Math.min(a, c); b = Math.max(b, c); } return [a, b]; };
+  const up = r => r < 0, dn = r => r > B;
+  let d = 0; const ds = [];   // ds[i] = distance of glyph i's right edge from the line's right end
+  // how far left the marks above and the tails/dots below have reached so far (a ر tail or a row
+  // of dots can reach past the next letter, so every later letter keeps clear of it)
+  const reach = [-Infinity, -Infinity];
+  for (let i = 0; i < gs.length; i++) {
+    const g = gs[i], sp = [span(g, up), span(g, dn)];
+    if (i) {
+      let sep = 1;
+      for (let z = 0; z < 2; z++) if (sp[z][1] !== -Infinity) sep = Math.max(sep, reach[z] + 2 - d - (g.w - 1 - sp[z][1]));
+      if (sep % 2 === 0) sep++;
+      sep += 2 * (extra ? extra[i] || 0 : 0);
+      g.sep = sep; g.joined = letters[i].jr; d += sep;
+    }
+    for (let z = 0; z < 2; z++) if (sp[z][0] !== Infinity) reach[z] = Math.max(reach[z], d + g.w - 1 - sp[z][0]);
+    ds.push(d); d += g.w;
+  }
+  // marks or tails hanging past either end of the line get room (kept even, to stay on the lattice)
+  let padR = 0, padL = 0;
+  gs.forEach((g, i) => { for (const [, c] of g.cells.concat(g.marks)) { const fromRight = ds[i] + (g.w - 1 - c); padR = Math.max(padR, -fromRight); padL = Math.max(padL, fromRight - (d - 1)); } });
+  padR += padR % 2; padL += padL % 2;
+  const width = d + padR + padL;
+  gs.forEach((g, i) => { g.u0 = width - 1 - padR - ds[i] - (g.w - 1); });
+  return { gs, width, B };
+}
+const minWidths = letters => letters.map(l => l.min);
+const naturalWidth = (letters, B) => arrange(letters, minWidths(letters), null, B).width;
+
+/* Stretch a line to exactly S columns: widen letters that can widen (boxes, bars, bowls), taking
+   turns so the stretch is even; only when nothing can widen do the joins, then the gaps, lengthen.
+   `turn` rotates who goes first, which gives different but equally valid lines. */
+function fitLine(letters, S, turn, B) {
+  const widths = minWidths(letters), extra = letters.map(() => 0);
+  let a = arrange(letters, widths, extra, B);
+  if (a.width > S) return null;
+  const wide = letters.map((l, i) => i).filter(i => letters[i].wd);
+  const joins = letters.map((l, i) => i).filter(i => i && letters[i].jr), gaps = letters.map((l, i) => i).filter(i => i && !letters[i].jr);
+  let k = turn || 0, guard = 0, cap = 4;   // a letter widens by at most `cap` before the joins take a share
+  while (a.width < S && guard++ < 4000) {
+    let done = false;
+    if (wide.length) {
+      // the least stretched letter first
+      const order = wide.map((i, n) => ({ i, key: (widths[i] - letters[i].min) * 100 + ((n - k % wide.length + wide.length) % wide.length) })).sort((p, q) => p.key - q.key);
+      for (const { i } of order) {
+        if (widths[i] - letters[i].min >= cap) continue;
+        widths[i] += 2; const b = arrange(letters, widths, extra, B);
+        if (b.width <= S) { a = b; done = true; break; }
+        widths[i] -= 2;
+      }
+    }
+    if (!done) {
+      // joins lengthen by one step each; after that the letters may widen further
+      const pool = joins.filter(i => extra[i] < Math.max(1, cap / 4 - 0));
+      const order = pool.slice().sort((p, q) => extra[p] - extra[q] || ((p + k) % 7) - ((q + k) % 7));
+      for (const i of order) {
+        extra[i]++; const b = arrange(letters, widths, extra, B);
+        if (b.width <= S) { a = b; done = true; break; }
+        extra[i]--;
+      }
+      if (!done) {
+        if (cap < 60) { cap += 4; continue; }
+        for (const i of gaps) { extra[i]++; const b = arrange(letters, widths, extra, B); if (b.width <= S) { a = b; done = true; break; } extra[i]--; }
+        if (!done) return null;
+      }
+    }
+  }
+  return a.width === S ? a : null;
+}
+
+/* ---------------- Composition ---------------- */
+function lineNeeds(letters) {
+  let above = false, below = false;
+  for (const l of letters) { const g = glyph(l.sp, l.fin, l.min); for (const [r] of g.cells.concat(g.marks)) { if (r < 0) above = true; if (r > 2) below = true; } }
+  return { above, below };
+}
+// paint the lines into an S × S grid; ids tell letters apart for the rule check
+function paint(lines, tops, S) {
+  const grid = new Int32Array(S * S), id = new Int32Array(S * S), feet = [], pairs = new Set();
+  let n = 0, marksPut = 0, clash = false;
+  const put = (y, x, val, gid) => {
+    if (y < 0 || y >= S || x < 0 || x >= S) { clash = true; return; }
+    if (grid[y * S + x]) clash = true;
+    grid[y * S + x] = val; id[y * S + x] = gid;
+  };
+  lines.forEach((a, li) => {
+    const T = tops[li], B = a.B; let prev = 0;
+    a.gs.forEach((g, gi) => {
+      const gid = ++n;
+      for (const [r, c] of g.cells) put(T + r, g.u0 + c, 1, gid);
+      if (gi && g.joined) { for (let x = g.u0 + g.w; x < g.u0 + g.w + g.sep; x++) put(T + B, x, 1, gid); pairs.add(prev + ':' + gid); }
+      let bar = 0;
+      for (const [r, c, f, same] of g.marks) { put(T + r, g.u0 + c, 1 | LOCK | f, same ? (bar || (bar = ++n)) : ++n); marksPut++; }
+      if (g.foot) feet.push({ y: T + g.foot.r, x: g.u0 + g.foot.c, dir: g.foot.dir, gid, li, gi });
+      g.gid = gid; prev = gid;
+    });
+  });
+  return { grid, id, feet, pairs, marksPut, clash };
+}
+/* The rules, checked on the finished grid:
+   - letters never touch, even at a corner, unless they are joined on the baseline;
+   - dots and hamza stand clear of everything;
+   - no stroke is two squares thick. */
+function violations(P, S) {
+  const { grid, id, pairs } = P; let bad = 0;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const a = id[y * S + x]; if (!a) continue;
+    for (const [dy, dx] of [[0, 1], [1, -1], [1, 0], [1, 1]]) {
+      const yy = y + dy, xx = x + dx; if (yy >= S || xx < 0 || xx >= S) continue;
+      const b = id[yy * S + xx]; if (!b || b === a) continue;
+      if (grid[y * S + x] & LOCK || grid[yy * S + xx] & LOCK) { bad++; continue; }
+      if (!pairs.has(Math.min(a, b) + ':' + Math.max(a, b))) bad++;
+    }
+    if (x + 1 < S && y + 1 < S && grid[y * S + x + 1] && grid[(y + 1) * S + x] && grid[(y + 1) * S + x + 1]) bad++;
+  }
+  return bad;
+}
+function voidCount(grid, S) {
+  let n = 0;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    if (grid[y * S + x]) continue;
+    let e = true;
+    for (let dy = -1; dy <= 1 && e; dy++) for (let dx = -1; dx <= 1 && e; dx++) { const yy = y + dy, xx = x + dx; if (yy >= 0 && xx >= 0 && yy < S && xx < S && grid[yy * S + xx]) e = false; }
+    if (e) n++;
+  }
+  return n;
+}
+// tails run on along their row while the way is clear: ع ح under their whole word (as the ع of
+// the plate does), ر و a few squares
+function extend(P, S, lines) {
+  const { grid, id } = P;
+  const clear = (y, x, gid) => {
+    if (x < 0 || x >= S || y < 0 || y >= S || grid[y * S + x]) return false;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yy = y + dy, xx = x + dx; if (yy < 0 || xx < 0 || yy >= S || xx >= S) continue;
+      if (grid[yy * S + xx] && id[yy * S + xx] !== gid) return false;
+    }
+    return true;
+  };
+  for (const f of P.feet) {
+    // a tail stays under its own word
+    const gs = lines[f.li].gs; let lim = f.x, i = f.gi;
+    if (f.dir < 0) { while (i + 1 < gs.length && gs[i + 1].L.word === gs[f.gi].L.word) i++; lim = gs[i].u0; }
+    else { while (i > 0 && gs[i - 1].L.word === gs[f.gi].L.word) i--; lim = gs[i].u0 + gs[i].w - 1; }
+    if (f.dir < 0) lim = Math.max(lim, f.x - 4);
+    let x = f.x;
+    while ((f.dir < 0 ? x - 1 >= lim : x + 1 <= lim) && clear(f.y, x + f.dir, f.gid)) { x += f.dir; grid[f.y * S + x] = 1; id[f.y * S + x] = f.gid; }
+  }
+}
+
+/* Lay `groups` (arrays of letters, one per line, top first) into a square. The gap between two
+   lines is 1 row when nothing hangs between them, 3 rows when tails/dots/ascenders interlock,
+   5 rows when they cannot. The height gives S; every line is then stretched to S.
+   When the lines are too low for their widest line, `lift` first makes lines taller (every letter
+   of a lifted line grows by two rows); otherwise the gaps between lines open. */
+function compose(groups, lift) {
+  const n = groups.length, needs = groups.map(lineNeeds);
+  const zone = []; for (let i = 0; i + 1 < n; i++) zone.push(needs[i].below || needs[i + 1].above ? 3 : 1);
+  const topPad = needs[0].above ? 2 : 0, botPad = needs[n - 1].below ? 2 : 0;
+  const up = groups.map(() => 0);   // lifts per line
+  const Bof = i => 2 + 2 * up[i];
+  const widest = () => Math.max(...groups.map((g, i) => naturalWidth(g, Bof(i))));
+  const height = () => topPad + 3 * n + 2 * up.reduce((s, v) => s + v, 0) + zone.reduce((s, z) => s + z, 0) + botPad;
+  let guard = 0;
+  while (height() < widest() && guard++ < 200) {
+    if (lift) {   // the least lifted line with the widest natural width goes first
+      let j = -1; for (let i = 0; i < n; i++) if (up[i] < 2 && (j < 0 || up[i] < up[j])) j = i;
+      if (j >= 0) { up[j]++; continue; }
+    }
+    const busy = i => (needs[i].below ? 1 : 0) + (needs[i + 1].above ? 1 : 0);
+    let j = -1; for (let i = 0; i < zone.length; i++) if (zone[i] < 5 && (j < 0 || zone[i] < zone[j] || (zone[i] === zone[j] && busy(i) > busy(j)))) j = i;
+    if (j < 0) return { tooNarrow: true };
+    zone[j] += 2;
+  }
+  if (height() < widest()) return { tooNarrow: true };
+  for (let round = 0; round < 3 * n + 2; round++) {
+    const S = height();
+    const tops = []; let y = topPad; for (let i = 0; i < n; i++) { tops.push(y); y += 3 + 2 * up[i] + (zone[i] || 0); }
+    // fit each line, trying other turns when a line clashes with the one above it
+    const lines = []; let failed = -1;
+    for (let i = 0; i < n && failed < 0; i++) {
+      let ok = null;
+      for (let turn = 0; turn < 12 && !ok; turn++) {
+        const a = fitLine(groups[i], S, turn, Bof(i)); if (!a) break;
+        const P = paint(lines.concat([a]), tops, S);
+        if (!P.clash && violations(P, S) === 0) ok = a;
+      }
+      if (ok) lines.push(ok); else failed = i;
+    }
+    if (failed < 0) {
+      const P = paint(lines, tops, S);
+      extend(P, S, lines);
+      return { grid: P.grid, S, n, lines, marks: P.marksPut, voids: voidCount(P.grid, S), zone, up, bad: violations(P, S) };
+    }
+    // the line that would not fit gets its own rows: widen the zone above it (or below the first)
+    const zi = failed > 0 ? failed - 1 : 0;
+    if (failed === 0 || zone[zi] >= 5) { if (zone.every(z => z >= 5)) return { failed: true }; const j = zone.findIndex(z => z < 5); zone[j] += 2; }
+    else zone[zi] += 2;
+  }
+  return { failed: true };
+}
+
+/* Choose the line breaks: for each number of lines the most even split (and its neighbours),
+   keep the composition with the fewest wide gaps and the least stretching. */
+function layout(text, opts) {
+  opts = opts || {};
+  const words = parse(text); if (!words.length) return null;
+  words.forEach((w, wi) => w.forEach(l => { l.word = wi; }));
+  const N = words.length, ww = words.map(naturalWidth);
+  const join = (a, b) => words.slice(a, b).reduce((s, w) => s.concat(w), []);
+  const memo = new Map();
+  const lineW = (a, b) => { const k = a * 1000 + b; if (!memo.has(k)) memo.set(k, naturalWidth(join(a, b))); return memo.get(k); };
+  const total = ww.reduce((s, v) => s + v + 1, -1);
+  let best = null;
+  const consider = (cuts, fromTop) => {   // cuts: start index of each line
+    let groups = cuts.map((c, i) => join(c, i + 1 < cuts.length ? cuts[i + 1] : N));
+    if (!fromTop) groups = groups.reverse();
+    for (const lift of [false, true]) {
+    const r = compose(groups, lift);
+    if (!r.grid || r.bad) continue;
+    if (lift && !r.up.some(v => v)) continue;   // same as the unlifted try
+    // stretching a line a little is free; stretching it to double is not
+    const stretch = groups.reduce((s, g, i) => { const w = naturalWidth(g, 2 + 2 * r.up[i]), k = (r.S - w) / w; return s + 60 * k * k + (k > 0.6 ? 400 * (k - 0.6) : 0); }, 0);
+    r.score = 2 * r.voids + stretch + r.S * 2 + 20 * r.zone.filter(z => z > 3).length;
+    r.fromTop = fromTop;
+    if (!best || r.score < best.score) best = r;
+    }
+  };
+  const orders = opts.order === 'bottom' ? [false] : opts.order === 'best' ? [true, false] : [true];   // top first unless asked
+  // a square of n lines is about 6n squares high, so n is near √(width / 6)
+  const est = Math.ceil(Math.sqrt(total / 6));
+  const nMin = opts.lines > 0 ? Math.min(opts.lines, N) : Math.max(1, est - 2), nMax = opts.lines > 0 ? Math.min(opts.lines, N) : Math.min(N, est + 3);
+  for (let n = nMin; n <= nMax; n++) {
+    // most even split by dynamic programming on squared line widths
+    const INF = 1e18, cost = Array.from({ length: n + 1 }, () => Array(N + 1).fill(INF)), from = Array.from({ length: n + 1 }, () => Array(N + 1).fill(-1));
+    const target = Math.max(total / n, 6 * n + 1);
+    cost[0][0] = 0;
+    for (let k = 1; k <= n; k++) for (let j = k; j <= N; j++) for (let i = k - 1; i < j; i++) {
+      if (cost[k - 1][i] === INF) continue;
+      const c = cost[k - 1][i] + (lineW(i, j) - target) ** 2;
+      if (c < cost[k][j]) { cost[k][j] = c; from[k][j] = i; }
+    }
+    if (cost[n][N] === INF) continue;
+    const cuts = []; for (let k = n, j = N; k > 0; k--) { j = from[k][j]; cuts.unshift(j); }
+    const tried = new Set();
+    const tryCuts = c => { const key = c.join(','); if (tried.has(key)) return; tried.add(key); for (const o of orders) consider(c, o); };
+    tryCuts(cuts);
+    for (let k = 1; k < n; k++) for (const dlt of [-1, 1]) {   // neighbours: move one break by a word
+      const c = cuts.slice(); c[k] += dlt;
+      if (c[k] > c[k - 1] && (k + 1 >= n || c[k] < c[k + 1]) && c[k] < N) tryCuts(c);
+    }
+  }
+  if (best) return best;
+  // too short for a square (one or two words): a single line, centred
+  const letters = join(0, N), a = arrange(letters, minWidths(letters)), nd = lineNeeds(letters);
+  const S = a.width + (a.width % 2 ? 0 : 1), h = (nd.above ? 2 : 0) + 3 + (nd.below ? 2 : 0);
+  const T = Math.max(0, Math.floor((S - h) / 4) * 2) + (nd.above ? 2 : 0);
+  const P = paint([a], [T], S);
+  return { grid: P.grid, S, n: 1, lines: [a], marks: P.marksPut, voids: 0, short: true, bad: violations(P, S) };
+}
+return { layout, parse, LOCK, HAMZA, L };
+})();
+
+function layoutK2(text, o) {
+  const r = K2.layout(text, { order: o.order === 'bottom' ? 'bottom' : o.order === 'best' ? 'best' : 'top', lines: o.lines });
+  if (!r) return null;
+  const { F, T, grid } = frameUp(r.S, o);
+  for (let y = 0; y < r.S; y++) for (let x = 0; x < r.S; x++) { const v = r.grid[y * r.S + x]; if (v) grid[(y + F) * T + x + F] = v; }
+  return { grid, T, S: r.S, n: r.n, unit: 'lines', short: r.short };
+}
+
 function layout(text, o) {
   if (o.layout === 'stacked' && PRESETS[text]) return layoutPreset(PRESETS[text], o);
+  if (o.layout === 'stacked') return layoutK2(text, o);
   const words = text.split(' ').filter(Boolean).map(wordTokens);
   if (!words.length) return null;
   const ww = words.map(w => w.reduce((s, t) => s + tokW(t), 0));
@@ -1008,7 +1427,7 @@ function toPlate(gx, gy) {
 }
 
 const LAYOUT_NOTES = {
-  stacked: 'Lines fill the square edge to edge. Alef and lam of the lower lines rise to the top edge and the lines above step in beside them.',
+  stacked: 'Lines fill the square edge to edge. Every stroke and gap is one square; tails and dots of one line sit in the gap to the next, and short lines grow taller instead of stretching.',
   spiral: 'Text starts upright along the bottom, turns at each corner and winds inward; the last words fill the centre.',
   fourfold: 'The phrase is written on all four sides, turning around the square, and again in the centre. Best for a short phrase.'
 };
@@ -1020,7 +1439,8 @@ function update() {
   if (unknown.length) $('unknown').textContent = 'Skipped characters that have no square Kufic shape here: ' + unknown.join(' ');
   $('reading').textContent = text;
   $('layoutNote').textContent = LAYOUT_NOTES[O.layout];
-  $('linesField').hidden = $('startField').hidden = $('riseField').hidden = O.layout !== 'stacked';
+  $('linesField').hidden = $('startField').hidden = O.layout !== 'stacked';
+  $('riseField').hidden = $('arms').parentElement.hidden = true;   // the stacked engine decides these itself
   L = layout(text, O);
   // hand edits survive anything that does not change the layout itself (size, thickness, export)
   const key = JSON.stringify([text, O.frame, O.layout, O.diamond, O.lines, O.justify, O.wordGap, O.arms, O.rise, O.order]);
